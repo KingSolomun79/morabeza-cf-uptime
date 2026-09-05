@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "morabeza-cf-uptime",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-05",
+  "observability": {
+    "logs": {
+      "enabled": true
+    }
+  }
+}
+// Scaffold placeholder (issue #1). Production bindings and settings — D1 (DB),
+// Queues (CHECK_QUEUE + DLQ), Cron trigger, send_email (EMAIL), workers_dev/preview_urls
+// disabled, non-secret vars — are finalized in issue #28 and provisioned in issue #29.
+// No API tokens belong in this file (PRD §31).

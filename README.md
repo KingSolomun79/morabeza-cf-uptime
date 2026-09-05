@@ -32,6 +32,21 @@ After V1 is stable, a small separate GitHub Upptime repository will monitor the 
 
 Development is local. Only production Cloudflare resources are created remotely. Do not create staging Workers, D1 databases, Queues, or staging hostnames.
 
+## Getting started
+
+Requires Node 22+ and pnpm.
+
+```bash
+pnpm install
+pnpm dev        # app + Worker via the Cloudflare Vite plugin (local emulation)
+pnpm test       # Vitest
+pnpm lint       # ESLint
+pnpm typecheck  # tsc across app/worker/node projects
+pnpm build      # typecheck + Vite production build (Worker + static assets)
+```
+
+CI runs lint, typecheck, tests, and build on every PR and push to `main`. There is no automatic deployment; production deploys are human-approved (issue #28/#29).
+
 ## Clean-room rule
 
 `nanasi-apps/cf-uptime-monitor` may be used only as a behavioral/UX reference. Do not fork or copy its AGPL implementation code into this repository.
