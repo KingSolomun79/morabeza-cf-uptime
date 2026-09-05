@@ -45,6 +45,21 @@ pnpm typecheck  # tsc across app/worker/node projects
 pnpm build      # typecheck + Vite production build (Worker + static assets)
 ```
 
+### D1 migrations (local)
+
+The schema lives in `db/schema.ts` (Drizzle). Migrations are generated SQL in
+`db/migrations/` and applied with wrangler's local D1 emulation:
+
+```bash
+pnpm db:generate        # after editing db/schema.ts — generates db/migrations/*.sql
+pnpm db:migrate:local   # apply pending migrations to the local D1 database
+```
+
+Never edit generated `0000_*` migration files by hand; schema-affecting extras
+that drizzle-kit cannot express (e.g. partial indexes) and seeds live in
+dedicated custom migrations. Commit every migration (PRD §42.10). The real
+production database is provisioned later (issue #29) — no staging resources, ever.
+
 CI runs lint, typecheck, tests, and build on every PR and push to `main`. There is no automatic deployment; production deploys are human-approved (issue #28/#29).
 
 ## Clean-room rule

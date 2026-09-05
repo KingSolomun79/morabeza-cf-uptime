@@ -16,9 +16,12 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply morabeza-cf-uptime-db --local"
   },
   "dependencies": {
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.13.7",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
@@ -27,10 +30,12 @@
     "@cloudflare/vite-plugin": "^1.54.4",
     "@cloudflare/workers-types": "^5.20260905.1",
     "@eslint/js": "^10.0.1",
+    "@libsql/client": "^0.18.0",
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^10.10.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.6",
