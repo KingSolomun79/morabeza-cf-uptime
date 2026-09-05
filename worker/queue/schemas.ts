@@ -45,6 +45,9 @@ export const PAYLOAD_SCHEMAS = {
   "monitor.check": z.object({
     monitorId: z.string().min(1),
     checkId: z.string().min(1),
+    // Scheduled checks: ms-precision UTC ISO-8601 minute slot (PRD §15.4).
+    // CONTRACT: the #12 out-of-order guard compares scheduledFor values
+    // lexicographically — producers MUST use one uniform, sortable format.
     scheduledFor: z.string().min(1).nullable(),
     source: z.enum(["scheduled", "manual"]),
     affectsState: z.boolean(),

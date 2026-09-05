@@ -18,6 +18,7 @@
 import { eq } from "drizzle-orm";
 import { checkResults, monitors, type monitors as monitorsTable } from "../../../db/schema";
 import { runCheck, type MonitorCheckConfig } from "../../services/checker";
+import { evaluateCheckAgainstState, type TransitionListener } from "../../services/state-evaluation";
 import { getDb } from "../../lib/db";
 import { nowIso } from "../../lib/time";
 import { logEvent } from "../../lib/logging";
@@ -26,6 +27,11 @@ import type { JobContext, JobHandler } from "../consumer";
 
 export interface MonitorCheckDeps {
   fetchImpl?: typeof fetch;
+  /**
+   * Transition subscriber for #12's seam (#13 incidents, #17 notifications
+   * register real listeners; default logs the structured event).
+   */
+  onTransition?: TransitionListener;
 }
 
 type MonitorRow = typeof monitorsTable.$inferSelect;
@@ -139,10 +145,43 @@ export function createMonitorCheckHandler(deps: MonitorCheckDeps = {}): JobHandl
       return;
     }
 
-    // ── Seam for state evaluation, incidents, and notifications ──────────
-    // ONLY the claimer reaches this point. #12 evaluates thresholds +
-    // out-of-order guards, #13 opens/resolves incidents, #17 enqueues
-    // notification.send intents — all anchored on this check result.
+    // ── #12: state evaluation, incidents, notifications ──────────────────
+    // ONLY the claimer reaches this point (PRD §16.4 step 5). Evaluation is
+    // gated inside on affects_state/maintenance_excluded/paused; the pure
+    // core decides the transition and the CAS update applies it in order.
+    // #13 opens/resolves incidents and #17 enqueues notification intents via
+    // the transition listener — all anchored on this check result.
+    await evaluateCheckAgainstState(
+      { db, onTransition: deps.onTransition },
+      {
+        monitorId: monitor.id,
+        failureThreshold: monitor.failureThreshold,
+        recoveryThreshold: monitor.recoveryThreshold,
+      },
+      {
+        checkId: payload.checkId,
+        source: payload.source,
+        scheduledFor: payload.scheduledFor,
+        isHealthy: outcome.isHealthy,
+        maintenanceExcluded: false, // live window flagging lands in #15 (PRD §14)
+        affectsState: affectsState === 1,
+        statusCode: outcome.statusCode,
+        responseTimeMs: outcome.responseTimeMs,
+        reasonCode: outcome.reasonCode,
+        completedAt,
+      },
+    ).then((evaluation) => {
+      // Operator visibility on WHY state didn't move (PRD §16.5 debugging).
+      if (!evaluation.applied) {
+        logEvent("state.evaluation_skipped", {
+          jobId: ctx.jobId,
+          monitorId: monitor.id,
+          checkId: payload.checkId,
+          source: payload.source,
+          reason: evaluation.reason,
+        });
+      }
+    });
     // ─────────────────────────────────────────────────────────────────────
 
     logEvent("queue.check_completed", {
