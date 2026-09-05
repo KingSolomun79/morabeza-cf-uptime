@@ -3,6 +3,14 @@
   "name": "morabeza-cf-uptime",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-05",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "morabeza-cf-uptime-db",
+      "database_id": "OWNER_TO_FILL_AFTER_CREATION",
+      "migrations_dir": "db/migrations"
+    }
+  ],
   "observability": {
     "logs": {
       "enabled": true
@@ -13,3 +21,8 @@
 // Queues (CHECK_QUEUE + DLQ), Cron trigger, send_email (EMAIL), workers_dev/preview_urls
 // disabled, non-secret vars — are finalized in issue #28 and provisioned in issue #29.
 // No API tokens belong in this file (PRD §31).
+//
+// Local development: the DB binding resolves to a local SQLite database under
+// .wrangler/state. Apply migrations with `pnpm db:migrate:local` (wrangler d1
+// migrations apply ... --local). The real database_id is filled in at
+// provisioning time (issue #29, PRD §35).
