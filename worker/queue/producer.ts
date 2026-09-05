@@ -50,3 +50,15 @@ export class QueueProducer {
     }
   }
 }
+
+/** Adapts the production Queue binding to the producer's QueueLike port. */
+export function queueBindingToQueueLike(binding: Queue): QueueLike {
+  return {
+    send: async (body) => {
+      await binding.send(body);
+    },
+    sendBatch: async (bodies) => {
+      await binding.sendBatch(bodies.map((body) => ({ body })));
+    },
+  };
+}

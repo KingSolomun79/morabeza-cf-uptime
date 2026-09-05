@@ -10,7 +10,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { disposeTestDb, createTestDb, type TestD1 } from "../helpers/d1";
-import { housekeepingJobsForSlot, minuteSlot, nextCheckAtFor, queueBindingToQueueLike, runSchedulerTick } from "../../worker/scheduler/scheduler";
+import { housekeepingJobsForSlot, minuteSlot, nextCheckAtFor, runSchedulerTick } from "../../worker/scheduler/scheduler";
+import { queueBindingToQueueLike } from "../../worker/queue/producer";
 import type { QueueLike } from "../../worker/queue/producer";
 
 const T0 = "2026-09-05T12:00:00.000Z";

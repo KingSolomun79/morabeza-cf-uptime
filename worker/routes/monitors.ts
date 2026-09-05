@@ -21,6 +21,7 @@ import {
 } from "../lib/monitor-schema";
 import { ApiError } from "../lib/errors";
 import { parseJsonBody, parseQuery } from "../lib/validation";
+import { requestManualCheck } from "../services/manual-check";
 import type { AppEnv } from "../env";
 
 const listQuerySchema = z.object({
@@ -126,4 +127,15 @@ monitorsRoutes.delete("/:id", async (c) => {
     summary: `archived monitor ${archived.name}`,
   });
   return c.json({ data: archived });
+});
+
+/**
+ * Run check now (issue #14; PRD §13, §24): enqueues a diagnostic-only manual
+ * check and returns immediately — never a synchronous target request.
+ */
+monitorsRoutes.post("/:id/check", async (c) => {
+  const receipt = await requestManualCheck(c.env, c.req.param("id"), {
+    actorEmail: c.get("actorEmail"),
+  });
+  return c.json({ data: receipt }, 202);
 });
