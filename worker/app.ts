@@ -10,6 +10,7 @@ import { errorEnvelope, ApiError } from "./lib/errors";
 import { originCheck, requireAccess } from "./lib/access";
 import { newId } from "./lib/ids";
 import { clientsRoutes } from "./routes/clients";
+import { monitorsRoutes } from "./routes/monitors";
 import { monitorNotificationTargetsRoutes, notificationTargetsRoutes } from "./routes/notifications";
 import type { AppEnv } from "./env";
 
@@ -67,6 +68,7 @@ export function createApp(): Hono<AppEnv> {
   api.route("/clients", clientsRoutes);
   api.route("/notification-targets", notificationTargetsRoutes);
   api.route("/monitors", monitorNotificationTargetsRoutes);
+  api.route("/monitors", monitorsRoutes);
 
   app.route("/api", api);
 
