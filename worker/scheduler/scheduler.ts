@@ -24,8 +24,7 @@ import { monitors, schedulerRuns } from "../../db/schema";
 import { getDb } from "../lib/db";
 import { newId } from "../lib/ids";
 import { logEvent } from "../lib/logging";
-import { QueueProducer, type EnvelopeInput, type QueueLike } from "../queue/producer";
-import type { MessageType } from "../queue/schemas";
+import { QueueProducer, type EnvelopeInput, type QueueLike } from "../queue/producer";import type { MessageType } from "../queue/schemas";
 import { touchSchedulerHeartbeat } from "../repositories/system";
 import type { Env } from "../env";
 
@@ -72,18 +71,6 @@ export function minuteSlot(date: Date): string {
  */
 export function nextCheckAtFor(intervalSeconds: number, slot: string): string {
   return new Date(Date.parse(slot) + intervalSeconds * 1000).toISOString();
-}
-
-/** Adapts the production Queue binding to the producer's QueueLike port. */
-export function queueBindingToQueueLike(binding: Queue): QueueLike {
-  return {
-    send: async (body) => {
-      await binding.send(body);
-    },
-    sendBatch: async (bodies) => {
-      await binding.sendBatch(bodies.map((body) => ({ body })));
-    },
-  };
 }
 
 /**

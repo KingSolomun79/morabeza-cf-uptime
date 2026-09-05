@@ -3,7 +3,8 @@ import app from "./app";
 import { QUEUE_NAMES } from "./queue/schemas";
 import { createQueueConsumer, type BatchLike } from "./queue/consumer";
 import { handleDeadLetterBatch } from "./queue/dlq-consumer";
-import { queueBindingToQueueLike, runSchedulerTick } from "./scheduler/scheduler";
+import { runSchedulerTick } from "./scheduler/scheduler";
+import { queueBindingToQueueLike } from "./queue/producer";
 
 const handleQueueBatch = createQueueConsumer();
 
