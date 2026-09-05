@@ -24,6 +24,10 @@ let d1: D1Database;
 const baseEnv: Omit<Env, "DB"> = {
   APP_ACCESS_MODE: "local",
   APP_ORIGIN: LOCAL_ORIGIN,
+  CHECK_QUEUE: {
+    send: async () => undefined,
+    sendBatch: async () => undefined,
+  } as unknown as Queue,
 };
 
 function env(overrides: Partial<Env> = {}): Env {
