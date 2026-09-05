@@ -8,8 +8,8 @@ export interface Env {
   /** D1 database `morabeza-cf-uptime-db` (issue #3). Local dev uses wrangler's local SQLite. */
   DB: D1Database;
 
-  /** Queue producer binding `morabeza-cf-uptime-checks` (added in issue #8). */
-  CHECK_QUEUE?: Queue;
+  /** Queue producer binding `morabeza-cf-uptime-checks` (issue #8). */
+  CHECK_QUEUE: Queue;
 
   /**
    * Public origin of this app; mutating /api requests must send a matching

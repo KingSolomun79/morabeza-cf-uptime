@@ -11,6 +11,24 @@
       "migrations_dir": "db/migrations"
     }
   ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "CHECK_QUEUE",
+        "queue": "morabeza-cf-uptime-checks"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "morabeza-cf-uptime-checks",
+        "dead_letter_queue": "morabeza-cf-uptime-checks-dlq",
+        "max_retries": 3
+      },
+      {
+        "queue": "morabeza-cf-uptime-checks-dlq"
+      }
+    ]
+  },
   "observability": {
     "logs": {
       "enabled": true
