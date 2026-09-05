@@ -3,6 +3,11 @@
   "name": "morabeza-cf-uptime",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-05",
+  // The single production Cron Trigger (issue #10; PRD §15.1): every monitor
+  // interval derives its cadence from this one minute tick, in UTC.
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
   "d1_databases": [
     {
       "binding": "DB",
