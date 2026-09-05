@@ -19,6 +19,7 @@ import { eq } from "drizzle-orm";
 import { checkResults, monitors, type monitors as monitorsTable } from "../../../db/schema";
 import { runCheck, type MonitorCheckConfig } from "../../services/checker";
 import { evaluateCheckAgainstState, type TransitionListener } from "../../services/state-evaluation";
+import { findActiveMaintenanceWindow } from "../../repositories/maintenance";
 import { getDb } from "../../lib/db";
 import { nowIso } from "../../lib/time";
 import { logEvent } from "../../lib/logging";
@@ -95,6 +96,25 @@ export function createMonitorCheckHandler(deps: MonitorCheckDeps = {}): JobHandl
       return;
     }
 
+    const activeWindow = await findActiveMaintenanceWindow(
+      db,
+      { monitorId: monitor.id, clientId: monitor.clientId },
+      startedAt,
+    );
+    if (activeWindow) {
+      // PRD §14.1: checks continue to run, the result is flagged as
+      // maintenance-excluded, and the evaluator below bypasses state,
+      // counters, incidents, and notifications.
+      logEvent("queue.check_maintenance", {
+        jobId: ctx.jobId,
+        monitorId: monitor.id,
+        checkId: payload.checkId,
+        windowId: activeWindow.id,
+        windowScope: activeWindow.scopeType,
+        outcome: "excluded",
+      });
+    }
+
     const outcome = await runCheck(toCheckConfig(monitor), {
       fetchImpl: deps.fetchImpl ?? fetch,
       checkId: payload.checkId,
@@ -121,8 +141,8 @@ export function createMonitorCheckHandler(deps: MonitorCheckDeps = {}): JobHandl
       startedAt,
       completedAt,
       isHealthy: outcome.isHealthy ? 1 : 0,
-      // Maintenance flagging/exclusion lands in #15 (PRD §14).
-      maintenanceExcluded: 0,
+      // Flagged by live-window resolution above (#15, PRD §14).
+      maintenanceExcluded: activeWindow ? 1 : 0,
       affectsState,
       statusCode: outcome.statusCode,
       responseTimeMs: outcome.responseTimeMs,
@@ -163,7 +183,7 @@ export function createMonitorCheckHandler(deps: MonitorCheckDeps = {}): JobHandl
         source: payload.source,
         scheduledFor: payload.scheduledFor,
         isHealthy: outcome.isHealthy,
-        maintenanceExcluded: false, // live window flagging lands in #15 (PRD §14)
+        maintenanceExcluded: activeWindow !== null,
         affectsState: affectsState === 1,
         statusCode: outcome.statusCode,
         responseTimeMs: outcome.responseTimeMs,
