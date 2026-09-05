@@ -12,6 +12,7 @@ import { newId } from "./lib/ids";
 import { clientsRoutes } from "./routes/clients";
 import { monitorsRoutes } from "./routes/monitors";
 import { maintenanceRoutes } from "./routes/maintenance";
+import { incidentsRoutes } from "./routes/incidents";
 import { monitorNotificationTargetsRoutes, notificationTargetsRoutes } from "./routes/notifications";
 import type { AppEnv } from "./env";
 
@@ -69,6 +70,7 @@ export function createApp(): Hono<AppEnv> {
   api.route("/clients", clientsRoutes);
   api.route("/notification-targets", notificationTargetsRoutes);
   api.route("/maintenance", maintenanceRoutes);
+  api.route("/incidents", incidentsRoutes);
   api.route("/monitors", monitorNotificationTargetsRoutes);
   api.route("/monitors", monitorsRoutes);
 

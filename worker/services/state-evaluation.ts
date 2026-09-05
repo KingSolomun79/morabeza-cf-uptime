@@ -76,6 +76,8 @@ export interface StateTransitionEvent {
   triggerScheduledFor: string;
   at: string;
   stateVersion: number;
+  /** Why the triggering check failed/succeeded — incident open_reason_code (#13). */
+  reasonCode: string;
 }
 
 export type TransitionListener = (event: StateTransitionEvent) => void | Promise<void>;
@@ -89,6 +91,7 @@ export function logTransitionEvent(event: StateTransitionEvent): void {
     to: event.transition.toStatus,
     scheduledFor: event.triggerScheduledFor,
     failureSequenceStartedAt: event.transition.failureSequenceStartedAt,
+    reasonCode: event.reasonCode,
     stateVersion: event.stateVersion,
   });
 }
@@ -173,6 +176,7 @@ export async function evaluateCheckAgainstState(
             triggerScheduledFor: result.scheduledFor,
             at: result.completedAt,
             stateVersion,
+            reasonCode: result.reasonCode,
           });
         } catch (error) {
           logEvent("state.transition_listener_failed", {

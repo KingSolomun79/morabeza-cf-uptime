@@ -18,9 +18,15 @@
 import { eq } from "drizzle-orm";
 import { checkResults, monitors, type monitors as monitorsTable } from "../../../db/schema";
 import { runCheck, type MonitorCheckConfig } from "../../services/checker";
-import { evaluateCheckAgainstState, type TransitionListener } from "../../services/state-evaluation";
+import {
+  evaluateCheckAgainstState,
+  logTransitionEvent,
+  type TransitionListener,
+} from "../../services/state-evaluation";
+import { handleIncidentLifecycle } from "../../services/incidents";
 import { findActiveMaintenanceWindow } from "../../repositories/maintenance";
 import { getDb } from "../../lib/db";
+import type { AppDatabase } from "../../lib/db";
 import { nowIso } from "../../lib/time";
 import { logEvent } from "../../lib/logging";
 import { claimUniqueRow } from "../idempotency";
@@ -36,6 +42,19 @@ export interface MonitorCheckDeps {
 }
 
 type MonitorRow = typeof monitorsTable.$inferSelect;
+
+/**
+ * Default post-CAS subscriber pipeline (PRD §16.4 steps 5–7): structured
+ * transition log, then the incident lifecycle (#13). #17 appends notification
+ * intents here. deps.onTransition replaces this whole pipeline (tests inject
+ * spies); the seam still isolates any throw a listener lets escape.
+ */
+function defaultTransitionPipeline(db: AppDatabase): TransitionListener {
+  return async (event) => {
+    logTransitionEvent(event);
+    await handleIncidentLifecycle(db, event);
+  };
+}
 
 function parseJsonSafe<T>(value: string | null, fallback: T): T {
   if (value === null) return fallback;
@@ -169,10 +188,10 @@ export function createMonitorCheckHandler(deps: MonitorCheckDeps = {}): JobHandl
     // ONLY the claimer reaches this point (PRD §16.4 step 5). Evaluation is
     // gated inside on affects_state/maintenance_excluded/paused; the pure
     // core decides the transition and the CAS update applies it in order.
-    // #13 opens/resolves incidents and #17 enqueues notification intents via
-    // the transition listener — all anchored on this check result.
+    // The default pipeline opens/resolves incidents (#13); #17 enqueues
+    // notification intents — all anchored on this check result.
     await evaluateCheckAgainstState(
-      { db, onTransition: deps.onTransition },
+      { db, onTransition: deps.onTransition ?? defaultTransitionPipeline(db) },
       {
         monitorId: monitor.id,
         failureThreshold: monitor.failureThreshold,
