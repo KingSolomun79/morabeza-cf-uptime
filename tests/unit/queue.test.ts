@@ -212,7 +212,7 @@ describe("infra-level idempotency hook (PRD §16.4)", () => {
         if (claimed) sideEffects += 1;
       },
     };
-    const consumer = createQueueConsumer(registry);
+    const consumer = createQueueConsumer({ registry });
 
     const message1 = fakeMessage({ v: 1, type: "system.heartbeat", jobId: "job-same", payload: {} });
     const message2 = fakeMessage({ v: 1, type: "system.heartbeat", jobId: "job-same", payload: {} });

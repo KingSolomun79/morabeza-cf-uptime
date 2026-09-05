@@ -15,6 +15,7 @@
 import { logEvent } from "../lib/logging";
 import { touchQueueConsumerHeartbeat } from "../repositories/system";
 import { parseEnvelope, type Envelope, type MessageType, type PayloadOf } from "./schemas";
+import { createMonitorCheckHandler, type MonitorCheckDeps } from "./handlers/monitor-check";
 import type { Env } from "../env";
 
 export interface JobContext {
@@ -54,11 +55,12 @@ function notImplemented(type: MessageType): JobHandler<MessageType> {
 
 /**
  * The full V1 handler registry. Implemented handlers grow slice by slice:
- * #9 (monitor.check), #17 (notification.send), #18 (rollups), #19 (retention).
+ * #9 (monitor.check — live), #17 (notification.send), #18 (rollups),
+ * #19 (retention).
  */
-export function defaultRegistry(): JobHandlerMap {
+export function defaultRegistry(checkerDeps: MonitorCheckDeps = {}): JobHandlerMap {
   return {
-    "monitor.check": notImplemented("monitor.check"),
+    "monitor.check": createMonitorCheckHandler(checkerDeps),
     "notification.send": notImplemented("notification.send"),
     "system.heartbeat": async () => {
       // Processing this job IS the heartbeat (batch-level update below);
@@ -71,7 +73,14 @@ export function defaultRegistry(): JobHandlerMap {
   };
 }
 
-export function createQueueConsumer(registry: JobHandlerMap = defaultRegistry()) {
+export interface ConsumerOptions {
+  registry?: JobHandlerMap;
+  /** Injected into the monitor.check handler (tests mock fetch). */
+  checkerDeps?: MonitorCheckDeps;
+}
+
+export function createQueueConsumer(options: ConsumerOptions = {}) {
+  const registry = options.registry ?? defaultRegistry(options.checkerDeps);
   return async function handleQueueBatch(batch: BatchLike, env: Env): Promise<void> {
     await touchQueueConsumerHeartbeat(env);
 
