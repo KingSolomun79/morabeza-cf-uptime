@@ -3,6 +3,12 @@
   "name": "morabeza-cf-uptime",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-05",
+  // Production exposure is custom-hostname ONLY (issue #28; PRD §29.3–4, §31):
+  // no <name>.<subdomain>.workers.dev and no version-preview URLs, so every
+  // app request crosses the Cloudflare Access gate on uptime.morabeza.digital.
+  // /healthz is the one deliberate anonymous exception (PRD §8.2).
+  "workers_dev": false,
+  "preview_urls": false,
   // The single production Cron Trigger (issue #10; PRD §15.1): every monitor
   // interval derives its cadence from this one minute tick, in UTC.
   "triggers": {
@@ -12,6 +18,10 @@
     {
       "binding": "DB",
       "database_name": "morabeza-cf-uptime-db",
+      // OWNER ACTION (issue #29, PRD §35): replace with the real database id
+      // after creating the DB. The placeholder passes LOCAL config validation
+      // (`pnpm deploy:dry-run`, AC of #28) but remote migrations/deploy fail
+      // loudly until it is filled — deliberately (no half-configured deploys).
       "database_id": "OWNER_TO_FILL_AFTER_CREATION",
       "migrations_dir": "db/migrations"
     }
@@ -19,18 +29,34 @@
   "send_email": [
     {
       // Email Service send binding (issue #17; PRD §9.2). Provisioned for
-      // real in #29 — placeholder is valid config for `wrangler dev` and
-      // `wrangler deploy` once the domain is onboarded.
+      // real in #29 — the binding is valid config; sending fails loudly
+      // (retry → DLQ) until the domain is onboarded (PRD §9.1).
       "name": "EMAIL"
     }
   ],
-  // Non-secret vars (issue #19; PRD §18 + §31 deploy example). Retention
-  // windows in days; §18 defaults are raw 7d / hourly 90d / daily 730d.
+  // Production vars (issue #28; PRD §31). Local development overrides
+  // APP_ORIGIN / APP_ACCESS_MODE via .dev.vars (see .dev.vars.example).
+  // No secrets belong here (PRD §31): ACCESS_TEAM_DOMAIN / ACCESS_AUDIENCE
+  // are owner actions in #29 (dashboard or `wrangler secret put` / deploy
+  // --var), not repo config.
   "vars": {
+    "APP_ORIGIN": "https://uptime.morabeza.digital",
+    // Fail-closed auth contract (§8.4): production ships Access mode. The
+    // runtime default when absent is "locked" (reject everything), so a
+    // stripped var can never open the API.
+    "APP_ACCESS_MODE": "access",
+    // Deployment timezone contract (§31). The UI reads the §27.8 constant
+    // (DISPLAY_TIMEZONE in src/lib/time-format.ts) — keep the two in sync.
+    "APP_TIMEZONE": "Atlantic/Cape_Verde",
+    "DEFAULT_FROM_EMAIL": "uptime@morabeza.digital",
+    // Retention windows in days (issue #19; PRD §18): raw 7d / hourly 90d /
+    // daily 730d (§18 defaults). Parsed by the shared parseRetentionDays.
     "RAW_CHECK_RETENTION_DAYS": "7",
     "HOURLY_RETENTION_DAYS": "90",
     "DAILY_RETENTION_DAYS": "730",
-    // Build/version metadata for GET /api/system (issue #26); bumped at deploy (#28).
+    // Build/version metadata for GET /api/system (issue #26). Base value;
+    // the deploy workflow overrides it with `<pkg>+run-<n>-<sha>` via
+    // `wrangler deploy --var` so every deployment is identifiable.
     "APP_VERSION": "0.1.0"
   },
   "queues": {
@@ -54,23 +80,30 @@
   "observability": {
     "logs": {
       "enabled": true
+    },
+    // §31: traces with conservative head sampling (5%).
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.05
     }
   },
   // Static assets (issue #21; same-unit deploy via the Vite/Cloudflare
   // pipeline). Client-side routes (e.g. email deep links /monitors/:id) fall
   // back to index.html; the API and /healthz ALWAYS hit the Worker so the
-  // JSON envelope contracts (PRD §24, §38) are preserved.
+  // JSON envelope contracts (PRD §24, §38) are preserved. Security headers
+  // for asset responses come from public/_headers; Worker-generated
+  // responses carry them from worker/lib/security-headers.ts (PRD §29.11–14).
   "assets": {
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/healthz"]
   }
 }
-// Scaffold placeholder (issue #1). Production bindings and settings — D1 (DB),
-// Queues (CHECK_QUEUE + DLQ), Cron trigger, send_email (EMAIL), workers_dev/preview_urls
-// disabled, non-secret vars — are finalized in issue #28 and provisioned in issue #29.
+// Final production configuration (issue #28; PRD §31). Provisioning of the
+// real resources — D1 database_id, queues, Email Service, Access, custom
+// hostname, deploy credentials — is the owner's HITL issue #29 (PRD §35).
 // No API tokens belong in this file (PRD §31).
 //
-// Local development: the DB binding resolves to a local SQLite database under
-// .wrangler/state. Apply migrations with `pnpm db:migrate:local` (wrangler d1
-// migrations apply ... --local). The real database_id is filled in at
-// provisioning time (issue #29, PRD §35).
+// Local development: copy .dev.vars.example to .dev.vars — it overrides the
+// production vars above with APP_ACCESS_MODE=local and a localhost APP_ORIGIN
+// (PRD §7.1). Apply migrations with `pnpm db:migrate:local`. Config
+// validation: `pnpm deploy:dry-run` (build + `wrangler deploy --dry-run`).

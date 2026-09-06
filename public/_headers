@@ -1,0 +1,11 @@
+# Security headers for static-asset responses (issue #28; PRD §29.11–14).
+# The assets layer serves the SPA shell + hashed bundles WITHOUT running
+# Worker code, so these rules are the only source of headers for them;
+# Worker-generated responses (/api, /healthz, JSON 404s) get the same
+# headers from worker/lib/security-headers.ts. tests/unit/security-headers.test.ts
+# pins both sources to identical directives — change them together.
+# Local `vite dev` does not apply _headers (deploy/preview only).
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer

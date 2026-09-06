@@ -10,6 +10,7 @@ import { nowIso } from "./lib/time";
 import { errorEnvelope, ApiError } from "./lib/errors";
 import { originCheck, requireAccess } from "./lib/access";
 import { newId } from "./lib/ids";
+import { securityHeaders } from "./lib/security-headers";
 import { evaluateHealth } from "./services/healthz";
 import { clientsRoutes } from "./routes/clients";
 import { monitorsRoutes } from "./routes/monitors";
@@ -24,6 +25,11 @@ import type { AppEnv } from "./env";
 
 export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+
+  // Security headers on every Worker-generated response (issue #28; PRD
+  // §29.11–14): CSP incl. frame-ancestors, nosniff, Referrer-Policy. Static
+  // assets bypass Worker code — the SPA shell is covered by public/_headers.
+  app.use("*", securityHeaders());
 
   // Per-request correlation id (PRD §38: correlation/request IDs).
   app.use("*", async (c, next) => {
