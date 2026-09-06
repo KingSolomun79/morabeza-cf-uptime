@@ -133,7 +133,7 @@ describe("SystemPage (PRD §27.10)", () => {
     const row = within(table).getByRole("row", { name: /monitor\.check/ });
     expect(within(row).getByText("exhausted retries")).toBeInTheDocument();
     expect(screen.queryByText("RESOLVED")).not.toBeInTheDocument(); // unresolved filter default
-    expect(screen.getByText(/No unresolved dead letters|1 unresolved/)).toBeInTheDocument();
+    expect(screen.getByText("1 unresolved")).toBeInTheDocument(); // header count from /api/system
   });
 
   it("resolve flow PATCHes with notes and confirms before acting", async () => {

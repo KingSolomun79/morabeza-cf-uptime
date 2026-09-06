@@ -52,7 +52,7 @@ function TargetForm({
   onSubmit,
   onCancel,
 }: {
-  target?: { id: string; name: string; email: string; isDefault: boolean };
+  target?: { id: string; name: string; email: string; isDefault: boolean; enabled: boolean };
   submitLabel: string;
   onSubmit: (body: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
@@ -60,6 +60,9 @@ function TargetForm({
   const [name, setName] = useState(target?.name ?? "");
   const [email, setEmail] = useState(target?.email ?? "");
   const [isDefault, setIsDefault] = useState(target?.isDefault ?? false);
+  // Create always starts enabled (the API default); edit can flip it — the
+  // delete 409 path explicitly tells operators to disable instead.
+  const [enabled, setEnabled] = useState(target?.enabled ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<UptimeApiError | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -75,7 +78,7 @@ function TargetForm({
     setSubmitting(true);
     setServerError(null);
     try {
-      await onSubmit({ name: name.trim(), email: email.trim(), isDefault });
+      await onSubmit(target ? { name: name.trim(), email: email.trim(), isDefault, enabled } : { name: name.trim(), email: email.trim(), isDefault });
     } catch (cause) {
       if (cause instanceof UptimeApiError) setServerError(cause);
       else setServerError(new UptimeApiError("internal", cause instanceof Error ? cause.message : "unexpected failure"));
@@ -104,10 +107,18 @@ function TargetForm({
           {errors.email && <p id="target-email-error" role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.email}</p>}
         </div>
       </div>
-      <span className="flex items-center gap-2 text-sm">
-        <input id="target-isDefault" type="checkbox" checked={isDefault} onChange={(event) => setIsDefault(event.target.checked)} />
-        <label htmlFor="target-isDefault">Default target (monitors without explicit associations)</label>
-      </span>
+      <div className="flex flex-wrap items-center gap-6 text-sm">
+        <span className="flex items-center gap-2">
+          <input id="target-isDefault" type="checkbox" checked={isDefault} onChange={(event) => setIsDefault(event.target.checked)} />
+          <label htmlFor="target-isDefault">Default target (monitors without explicit associations)</label>
+        </span>
+        {target && (
+          <span className="flex items-center gap-2">
+            <input id="target-enabled" type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+            <label htmlFor="target-enabled">Enabled (receives alerts and test emails)</label>
+          </span>
+        )}
+      </div>
       <div className="flex items-center gap-2">
         <Button type="submit" disabled={submitting}>{submitLabel}</Button>
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
@@ -204,7 +215,7 @@ export function NotificationsPage() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [formTarget, setFormTarget] = useState<
     | { key: "create"; mode: "create" }
-    | { key: string; mode: "edit"; target: { id: string; name: string; email: string; isDefault: boolean } }
+    | { key: string; mode: "edit"; target: { id: string; name: string; email: string; isDefault: boolean; enabled: boolean } }
     | null
   >(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);

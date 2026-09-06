@@ -77,5 +77,13 @@ export async function resolveDeadLetter(
     .where(and(eq(deadLetterEvents.id, id), isNull(deadLetterEvents.resolvedAt)))
     .returning();
 
-  return { letter: toDto(updated ?? { ...existing, resolvedAt, resolutionNotes: input.notes }), alreadyResolved: false };
+  if (updated === undefined) {
+    // Lost a race against a concurrent resolve (the guarded UPDATE matched
+    // nothing): first resolution wins — return the winner, mark as already
+    // resolved so the route audits once and surfaces the warning sibling.
+    const [winner] = await db.select().from(deadLetterEvents).where(eq(deadLetterEvents.id, id));
+    return { letter: toDto(winner ?? existing), alreadyResolved: true };
+  }
+
+  return { letter: toDto(updated), alreadyResolved: false };
 }

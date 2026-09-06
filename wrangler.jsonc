@@ -29,7 +29,7 @@
   "vars": {
     "RAW_CHECK_RETENTION_DAYS": "7",
     "HOURLY_RETENTION_DAYS": "90",
-        "DAILY_RETENTION_DAYS": "730",
+    "DAILY_RETENTION_DAYS": "730",
     // Build/version metadata for GET /api/system (issue #26); bumped at deploy (#28).
     "APP_VERSION": "0.1.0"
   },

@@ -8,9 +8,9 @@
  */
 import { useState } from "react";
 import { Link } from "react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CircleCheck, CircleHelp, CircleX, RefreshCw, Send } from "lucide-react";
-import { apiMutate, apiRequest, apiRequestEnvelope, UptimeApiError } from "../lib/api";
+import { apiRequest, apiRequestEnvelope, UptimeApiError } from "../lib/api";
 import { formatRelative, formatTimestamp } from "../lib/time-format";
 import type { DeadLetterDto, HeartbeatView, SystemReportDto } from "../types/system";
 import { Badge } from "../components/ui/badge";
@@ -79,10 +79,7 @@ function HeartbeatRow({ label, view }: { label: string; view: HeartbeatView }) {
 function ResolveRow({ letter, onResolved }: { letter: DeadLetterDto; onResolved: (notice: Notice) => void }) {
   const [armed, setArmed] = useState(false);
   const [notes, setNotes] = useState("");
-  const resolve = useMutation({
-    mutationFn: (id: string) =>
-      apiMutate<DeadLetterDto>(`/api/dead-letters/${id}`, "PATCH", { notes: notes.trim() === "" ? null : notes.trim() }),
-  });
+  const [pending, setPending] = useState(false);
 
   if (!armed) {
     return (
@@ -104,8 +101,9 @@ function ResolveRow({ letter, onResolved }: { letter: DeadLetterDto; onResolved:
       <Button
         variant="destructive"
         size="sm"
-        disabled={resolve.isPending}
+        disabled={pending}
         onClick={async () => {
+          setPending(true);
           try {
             const envelope = await apiRequestEnvelope<DeadLetterDto>(`/api/dead-letters/${letter.id}`, {
               method: "PATCH",
@@ -119,6 +117,8 @@ function ResolveRow({ letter, onResolved }: { letter: DeadLetterDto; onResolved:
             setArmed(false);
           } catch (cause) {
             onResolved(actionError("Resolve failed", cause));
+          } finally {
+            setPending(false);
           }
         }}
       >

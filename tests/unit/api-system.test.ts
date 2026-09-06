@@ -32,11 +32,13 @@ beforeAll(async () => {
   env = testDb.env;
   const db = getDb(env);
 
-  // A stale scheduler heartbeat (written 1h before NOW; limit is 3m) plus a
-  // never-written consumer — exercises stale AND fresh-unknown in one report.
+  // A stale scheduler heartbeat (written 1h before the REAL clock; the limit
+  // is 3m) plus a never-written consumer — exercises stale AND fresh-unknown
+  // in one report. Real-clock offsets per HANDOFF §3.7: an absolute fixture
+  // only ever gets staler, silently stopping to detect limit regressions.
   await db.insert(systemState).values({
     id: "system",
-    lastSchedulerAt: "2026-09-06T11:00:00.000Z",
+    lastSchedulerAt: new Date(Date.now() - 60 * 60_000).toISOString(),
     updatedAt: NOW,
   });
 
@@ -116,7 +118,7 @@ describe("GET /api/system (#26)", () => {
     expect(report.d1).toEqual({ reachable: true });
     // Scheduler heartbeat is 1h old (limit 3m) → stale; consumer never ran →
     // fresh-unknown (the #11 bootstrap grace), surfaced as "never_run".
-    expect(report.heartbeats.scheduler).toEqual({ at: "2026-09-06T11:00:00.000Z", status: "stale" });
+    expect(report.heartbeats.scheduler.status).toBe("stale");
     expect(report.heartbeats.queueConsumer).toEqual({ at: null, status: "never_run" });
     expect(report.heartbeats.hourlyRollup.status).toBe("never_run");
     // Effective §18 defaults from wrangler vars/absence.
