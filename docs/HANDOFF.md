@@ -1,6 +1,6 @@
 # Handoff — Morabeza CF Uptime
 
-**Date:** 2026-09-06 · **State:** main green, 403/403 tests, CI passing · **Author:** agent session (state chain #18→#19→#20→UI era **#21→#22→#23→#24→#25**)
+**Date:** 2026-09-06 · **State:** main green, 436/436 tests, CI passing · **Author:** agent session (UI era **#21→#27 COMPLETE**; next #28, then HITL #29–#31)
 
 ---
 
@@ -24,9 +24,9 @@ Build a Cloudflare-uptime monitor (single Worker + D1 + Queues + Email) from `do
 
 **Closed (merged):** #1–#6 #8 #9 #12 #10 #14 #15 #16 #13 #17 #11 #18 #19 #20 — scaffold, ADRs, D1 schema, API shell + clients, monitors CRUD, HTTP checker, queue infra, monitor.check pipeline, state machine, cron scheduler, manual checks, maintenance windows, notification targets, incidents, the full email pipeline, real /healthz, hourly/daily rollups, retention cleanup, and the uptime API.
 
-**UI era LANDED:** **#21** (UI foundation: router/shell/TanStack/tailwind/StatusBadge/envelope client) → **#22** (Overview dashboard + GET /api/dashboard) → **#23** (Monitors list + create/edit/duplicate forms + run-now/pause/archive actions; client-side validation REUSES worker zod schemas) → **#24** (monitor detail /monitors/:id: 4 uptime windows, Recharts chart with labeled maintenance overlays, paginated checks table + NEW GET /api/monitors/:id/checks and /:id/incidents) → **#25** (clients list + /clients/:id, incidents list + /incidents/:id detail with check timeline, maintenance create/edit/cancel with Cape_Verde wall-time inputs → UTC persistence; zero new API surface).
+**UI era COMPLETE (#21–#27, every §27.2 nav section is a real page):** **#21** (foundation) → **#22** (Overview + GET /api/dashboard) → **#23** (Monitors CRUD UI; validation REUSES worker zod schemas) → **#24** (monitor detail: uptime windows, Recharts chart + labeled maintenance overlays, checks history via NEW GET /api/monitors/:id/checks + /:id/incidents) → **#25** (clients list/detail, incidents list/detail with check timeline, maintenance CRUD with Cape_Verde wall-time inputs; zero new API surface) → **#26** (notifications page + system page; NEW GET /api/system, dead-letter list + resolve-with-notes, GET /api/notification-events; heartbeat freshness law EXTRACTED to worker/lib/heartbeat.ts, shared with #11's healthz; APP_VERSION wrangler var) → **#27** (bulk import POST /api/monitors/import + export GET /api/monitors/export; Import/Export page; commit policy: validate whole file → create valid, skip duplicates flagged-not-duplicated → idempotent round-trip; MAX_IMPORT_ROWS=100 chosen against the D1 per-request query budget; the placeholder-page component is DELETED).
 
-**Open, in dependency order:** **#26 (notifications/system) → #27 (bulk import/export)** → #28 (deploy workflow, afk) → #29–#31 (HITL: provisioning, rollout, Upptime watchdog watching /healthz).
+**Open, in dependency order:** **#28 (production deploy workflow + final wrangler.jsonc + smoke script, afk)** → **#29–#31 (HITL — require the human OWNER; do not start autonomously)**: provisioning + first deploy + smoke gate (#29), initial monitor rollout (#30), external Upptime watchdog (#31).
 
 ### Architecture as-built (map)
 
@@ -100,14 +100,17 @@ tests/unit/*          real D1 via miniflare (tests/helpers/d1.ts — includes a 
 5. **Recharts:** explicit `width/height` (NO ResponsiveContainer — jsdom has no layout), `isAnimationActive={false}` (jsdom lacks getTotalLength), `<Legend />` gives the series a text name. The detail route is `React.lazy`'d so the ~109 kB gzip chart chunk stays off the eager bundle (main bundle unchanged). Maintenance overlays are BRACKETED by surrounding plotted points (`overlayRegionsForPoints`) — maintenance checks carry no response time, so windows often contain zero plotted points and naive "points inside window" logic renders nothing.
 6. **Deep links are contracts:** `/monitors/:id` (#24) and `/incidents/:id` (#25) are embedded in #17 alert emails — route shapes must never change; both render 404 cards with requestId for dead ids.
 7. **Timezones:** persisted = ms-precision UTC; displayed = `Atlantic/Cape_Verde` (§27.8). `src/lib/datetime-local.ts` does UTC↔datetime-local wall conversion (two-pass offset; midnight-crossing pinned by tests). Anchoring "now" in render: use `query.dataUpdatedAt`, never `Date.now()`.
-8. **No destructive UI anywhere:** archive/cancel are two-click confirm guards ("Confirm archive/cancel" + "Keep"); archived rows/clients/windows are read-only with explanatory copy. #25 left a noted follow-up: no un-archive path for archived clients (API supports `PATCH {active:true}`).
+8. **No destructive UI anywhere:** archive/cancel/delete/resolve are two-click confirm guards; archived rows/clients/windows are read-only with explanatory copy. Noted follow-ups: no un-archive path for archived clients (API supports `PATCH {active:true}`); TargetForm email validation is a local regex (extracting worker/lib/notification-schema.ts would complete the SSOT pattern).
+9. **Heartbeat freshness (#26) is ONE law:** `worker/lib/heartbeat.ts` — `heartbeatStatus` (fresh | stale | never_run; null = never_run = bootstrap grace; unparseable = stale, fail-closed) + limits (scheduler 3m, consumer 10m, hourly rollup 2h, daily rollup 26h, cleanup 26h — derived from the deterministic #12 slots). /healthz collapses never_run → fresh; GET /api/system shows all three states. Change limits in ONE place.
+10. **Bulk import (#27) commit policy:** validate the WHOLE file first (shared schema + §10.9 header check + body/method conflict per row) → create valid unique rows → SKIP probable duplicates (client+url+method) with a pointer (flagged, not duplicated — export→import is idempotent). Clients referenced by NAME/slug in canonical rows, case-insensitive. Mid-flight create failures become row results (partial commit stays visible). Export = same shape incl. requestBody, headers sanitized; non-archived only. Don't raise MAX_IMPORT_ROWS without budgeting D1's per-request query cap (~5 queries/created row).
+11. **Bundle:** the Recharts detail page is `React.lazy` (separate ~109 kB gzip chunk); the main bundle is ~505 kB (145 gzip) and `chunkSizeWarningLimit: 600` is a DOCUMENTED decision in vite.config.ts, not a mute — revisit if the main bundle grows meaningfully.
 
 
 ---
 
-## 4. Remaining work — #26 → #27, then deploy/HITL
+## 4. Remaining work — #28 (afk), then STOP for HITL (#29–#31)
 
-Do them **in number order** (#26 renders #16/#17 notification surfaces + system heartbeats; #27 reuses #23's form/validation SSOT for bulk import). Full specs live in `gh issue view NNN` — do **not** create new GitHub issues; these exist. The §27.2 nav has TWO placeholder routes left (Notifications, Import/Export); every other section is a real page.
+**#28 is the last autonomous issue** (production deploy workflow + final wrangler.jsonc + smoke-test script). **#29–#31 are `hitl` issues — they need the human owner. Do not start them autonomously; when the chain reaches them, stop and report.** Full specs live in `gh issue view NNN` — do not create new GitHub issues; these exist.
 
 Cross-cutting notes only the current code knows:
 
@@ -118,7 +121,8 @@ Cross-cutting notes only the current code knows:
 - **Auth in dev:** `APP_ACCESS_MODE=local` trusts `X-Dev-Access-Email`; production is Access JWT (`access` mode, fail-closed `locked` default). UI ships before provisioning (#29) — keep local mode working.
 - **`GET /:id/uptime` validation quirk:** invalid window on an unknown monitor returns 400 (validation runs before the 404) — deliberate, tested; don't "fix" asymmetry without a reason.
 - **System heartbeats for #26's system page:** `system_state` row has `last_scheduler_at`, `last_queue_consumer_at`, `last_hourly_rollup_at`, `last_daily_rollup_at`, `last_cleanup_at` (the last one is NOT yet surfaced in /healthz — candidate follow-up). Dead-letter rows come from `dead_letter_events` (DLQ consumer persists them). The #22 dashboard already carries the heartbeat chip (`{status, checks:{d1,scheduler,consumer}}`).
-- **For #26's delivery log:** `notification_events` rows (with `monitor_id` nullable for test events) — no list endpoint exists yet; #26 likely adds one (envelope+pagination convention above).
-- **For #27:** monitor create validation is `createMonitorSchema` (worker/lib/monitor-schema.ts) — reuse it for import row validation; `findProbableDuplicate` powers the §17.2 duplicate warning (envelope `warning` sibling — read it with `apiRequestEnvelope`, NOT `apiMutate`).
+- **APIs live as of the end of the UI era:** everything in §3b plus GET /api/system, GET+PATCH /api/dead-letters, GET /api/notification-events, POST /api/monitors/import, GET /api/monitors/export. Every §38 envelope convention holds.
+- **For #28:** wrangler.jsonc still has placeholders (real database_id + Access team domain/AUD land in provisioning #29 — check the file header note); APP_VERSION var exists and should be bumped/automated at deploy; `run_worker_first` + SPA fallback are already wired; APP_ACCESS_MODE must ship as `access` (fail-closed `locked` default remains safe). The external smoke gate depends on /healthz's strict two-field contract (§19).
+- **HITL gate:** #29 needs real Cloudflare credentials/decisions; #30 is the owner's rollout plan; #31 is an EXTERNAL repo watching /healthz. Autonomous work must not preempt owner choices.
 
-Sequence: **#26 → #27**, then **#28** (deploy workflow, afk) and the **#29–#31 HITL chain** (owner in the loop).
+Sequence: **#28**, then **STOP — hand #29–#31 to the owner**.
