@@ -25,6 +25,7 @@ import { requestManualCheck } from "../services/manual-check";
 import { getMonitorUptime, UPTIME_WINDOWS } from "../services/uptime";
 import { listMonitorChecks } from "../services/checks";
 import { listIncidents } from "../services/incidents";
+import { exportMonitors, importMonitors } from "../services/monitor-import";
 import type { AppEnv } from "../env";
 
 const listQuerySchema = z.object({
@@ -60,6 +61,35 @@ function assertNoForbiddenConfig(input: { headers: Record<string, string> | null
 }
 
 export const monitorsRoutes = new Hono<AppEnv>();
+
+// Import/export (issue #27; PRD §25) — registered BEFORE /:id so "import"
+// and "export" are never captured as an id segment.
+monitorsRoutes.post("/import", async (c) => {
+  const body = await parseJsonBody(c, z.unknown());
+  const result = await importMonitors(c.env, body);
+  await recordAudit(c.env, {
+    actorEmail: c.get("actorEmail"),
+    action: "monitor.import",
+    entityType: "monitor",
+    entityId: "bulk",
+    summary: `imported monitors — created ${result.summary.created}, duplicates ${result.summary.duplicates}, failed ${result.summary.failed} of ${result.summary.total}`,
+    metadata: { ...result.summary },
+  });
+  return c.json({ data: result }, 201);
+});
+
+monitorsRoutes.get("/export", async (c) => {
+  const data = await exportMonitors(c.env);
+  await recordAudit(c.env, {
+    actorEmail: c.get("actorEmail"),
+    action: "monitor.export",
+    entityType: "monitor",
+    entityId: "bulk",
+    summary: `exported ${data.length} monitor config row(s)`,
+    metadata: { count: data.length },
+  });
+  return c.json({ data });
+});
 
 monitorsRoutes.get("/", async (c) => {
   const query = parseQuery(c, listQuerySchema);

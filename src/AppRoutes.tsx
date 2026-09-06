@@ -1,11 +1,8 @@
 /**
- * Route table (issues #21–#26; PRD §27.2): the shell layout wraps the nav
- * sections; Overview (#22), Monitors (#23), monitor detail (#24), Clients +
- * Incidents + Maintenance (#25), and Notifications + System (#26) are real
- * pages. /monitors/:id and /incidents/:id are the #17 email deep links —
- * their shapes must stay stable. Import/Export (#27) remains a placeholder.
- * Exported separately from App so tests can drive specific paths via
- * MemoryRouter.
+ * Route table (issues #21–#27; PRD §27.2): every nav section is a real
+ * page. /monitors/:id and /incidents/:id are the #17 email deep links —
+ * their shapes must stay stable. Exported separately from App so tests can
+ * drive specific paths via MemoryRouter.
  */
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
@@ -17,7 +14,7 @@ import { MaintenancePage } from "./pages/maintenance-page";
 import { NotificationsPage } from "./pages/notifications-page";
 import { SystemPage } from "./pages/system-page";
 import { MonitorsPage } from "./pages/monitors-page";
-import { ImportExportPage } from "./pages";
+import { ImportExportPage } from "./pages/import-export-page";
 
 // The detail page carries Recharts (~1/3 of the bundle) — load it only when
 // a deep link or table row actually needs it.
