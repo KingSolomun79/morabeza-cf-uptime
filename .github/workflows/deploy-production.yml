@@ -56,6 +56,12 @@ jobs:
       # PRD §7.2 step 1: verify clean CI on EXACTLY this commit before any
       # production mutation. Waits for pending runs; any failure or a commit
       # with no CI runs aborts the deploy.
+      #
+      # Gates on ci.yml's job NAME specifically. Counting ALL check runs is a
+      # self-deadlock: this workflow's own check run is `in_progress` on the
+      # same SHA while the gate polls, so the gate would wait on itself for
+      # the full 10-minute ceiling (found live on the first dispatch, #29).
+      # COUPLING: keep the name in sync with ci.yml's job `name:`.
       - name: Verify CI is green on this commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -64,7 +70,7 @@ jobs:
           sha="${{ github.sha }}"
           for attempt in $(seq 1 30); do
             summary="$(gh api "repos/${{ github.repository }}/commits/$sha/check-runs" --paginate \
-              | jq -rs '[.[].check_runs[]] |
+              | jq -rs '[.[].check_runs[] | select(.name == "lint, typecheck, test, build")] |
                   {
                     total:   length,
                     pending: [.[] | select(.status != "completed")] | length,
