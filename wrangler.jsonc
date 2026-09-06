@@ -45,15 +45,20 @@
   ],
   // Production vars (issue #28; PRD §31). Local development overrides
   // APP_ORIGIN / APP_ACCESS_MODE via .dev.vars (see .dev.vars.example).
-  // No secrets belong here (PRD §31): ACCESS_TEAM_DOMAIN / ACCESS_AUDIENCE
-  // are owner actions in #29 (dashboard or `wrangler secret put` / deploy
-  // --var), not repo config.
+  // No secrets belong here (PRD §31).
   "vars": {
     "APP_ORIGIN": "https://uptime.morabeza.digital",
     // Fail-closed auth contract (§8.4): production ships Access mode. The
     // runtime default when absent is "locked" (reject everything), so a
     // stripped var can never open the API.
     "APP_ACCESS_MODE": "access",
+    // Cloudflare Access identity (owner-provisioned, issue #29). The team
+    // domain serves the JWKS the API verifies JWTs against; the AUD pins the
+    // MAIN Access app (uptime.morabeza.digital) — /api JWTs always carry that
+    // audience. The /healthz bypass app's AUD never reaches the API (that
+    // path is anonymous). Identifiers, not secrets — repo-safe (PRD §31).
+    "ACCESS_TEAM_DOMAIN": "seolutional.cloudflareaccess.com",
+    "ACCESS_AUDIENCE": "0dd83a111296b708731cad44e8e6002338bfd94c91e58e2c9737e5ae488dfb2a",
     // Deployment timezone contract (§31). The UI reads the §27.8 constant
     // (DISPLAY_TIMEZONE in src/lib/time-format.ts) — keep the two in sync.
     "APP_TIMEZONE": "Atlantic/Cape_Verde",
