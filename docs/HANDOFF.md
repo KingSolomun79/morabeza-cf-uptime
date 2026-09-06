@@ -1,6 +1,6 @@
 # Handoff — Morabeza CF Uptime
 
-**Date:** 2026-09-06 · **State:** main green, 454/454 tests, CI passing · **Author:** agent session (**autonomous chain #1–#28 COMPLETE**; next: HITL #29–#31 — owner only)
+**Date:** 2026-09-06 · **State:** LIVE IN PRODUCTION (uptime.morabeza.digital) — main green, 454/454 tests · **Author:** agent session (**autonomous chain #1–#28 + HITL #29 COMPLETE**; remaining: #30 monitor rollout, #31 Upptime watchdog — owner-led)
 
 ---
 
@@ -28,7 +28,9 @@ Build a Cloudflare-uptime monitor (single Worker + D1 + Queues + Email) from `do
 
 **#28 COMPLETE (production deploy readiness, PR #60):** final `wrangler.jsonc` per §31 (workers_dev/preview_urls off, production vars incl. APP_ACCESS_MODE=access, traces 5% head sampling; `database_id` stays a documented owner placeholder — remote ops fail loudly until #29 fills it) · security headers per §29.11–14 with TWO delivery paths (worker middleware for /api+/healthz+404s, `public/_headers` for static assets — tests pin both byte-identically) · `.github/workflows/deploy-production.yml` (dispatch-only, `production` environment approval gate + main-only backstop; CI-green SHA gate → remote D1 migrations → deploy with APP_VERSION stamped → smoke) · `scripts/smoke.mjs` (automatable §32.3 subset + 12 enumerated manual items) · `docs/RUNBOOK.md` (the §35 owner checklist + §7.2 sequence — the manual companion #29 executes).
 
-**Open, in dependency order:** **#29–#31 are `hitl` issues — they REQUIRE the human OWNER. Do not start autonomously.** #29 provisioning + first deploy + smoke gate (companion: docs/RUNBOOK.md) → #30 initial monitor rollout → #31 external Upptime watchdog. Full specs live in `gh issue view NNN`.
+**#29 COMPLETE (production LIVE, owner-executed with agent support):** D1/queues/Email Service/Access/custom hostname provisioned; GitHub `production` environment (reviewer + branch policy + least-privilege secrets); first migrations + deploy approved through the #28 workflow; **full §32.3 smoke gate passed live** (all 15 items — failure/recovery/maintenance drills with exactly-once emails). Evidence + run history: **`docs/PRODUCTION-READINESS.md`**. Live fixes shipped during #29: CI-gate self-deadlock (PR #66), smoke DNS-race retries (PR #67), **workerd `Illegal invocation` on detached `fetch` — every check was failing until PR #68** (see §3.18), 🔴/✅ email emoji (PR #69). Owner-requested follow-up: slug auto-fill in forms.
+
+**Open (owner-led, in order):** **#30 initial monitor rollout** (real monitors via UI/import — §33 candidates) → **#31 Upptime watchdog** (EXTERNAL repo watching `/healthz`). Both `hitl`: #30 needs the owner's monitor list/choices; #31 is an external repo the owner creates. Agent supports on request. Full specs: `gh issue view NNN`.
 
 ### Architecture as-built (map)
 
@@ -122,23 +124,27 @@ tests/unit/*          real D1 via miniflare (tests/helpers/d1.ts — includes a 
 
 ---
 
-## 4. Remaining work — NONE autonomously; hand #29–#31 to the OWNER (HITL)
+## 3d. Live-production lessons (#29 — read before touching the checker or emails)
 
-**The autonomous chain is complete (through #28).** Everything the agent could build, test, review, and document locally is on main. **#29–#31 are `hitl` issues — they need the human owner's Cloudflare account, credentials, and decisions. Do not start them autonomously; if asked, point at docs/RUNBOOK.md and stop.** Full specs live in `gh issue view NNN` — do not create new GitHub issues; these exist.
+18. **WORKERD `this`-BINDING TRAP (cost us a live incident):** passing the global `fetch` as a value (`fetchImpl: deps.fetchImpl ?? fetch`) and calling it detached throws `TypeError: Illegal invocation` in workerd — EVERY check failed instantly (0 ms, `network_error`). `.bind(globalThis)` at BOTH wiring sites (monitor-check handler, Access JWKS path). **Mocks hide this class of bug completely** (test fakes are plain arrows; local preview never ran a real check) — only a real check in real workerd exposes it. Any new runtime-native function passed as a callback must be bound. Repro recipe: `pnpm dev` + local-mode API check against `https://example.com` reproduces in seconds.
+19. **First-deploy DNS race:** the smoke step runs seconds after `routes.custom_domain` attaches the hostname — resolvers can still NXDOMAIN (3 of 4 probes failed on the first green-candidate run while the app was healthy). The smoke step now retries 4×/30s. Also: a run can be genuinely GREEN while the smoke of the PREVIOUS run failed on this race — always re-verify out-of-band before rolling back.
+20. **Don't monitor your own platform zone:** `www.cloudflare.com/...` fails instantly from inside a Worker (`network_error`, 0 ms). Prefer neutral targets (`example.com`, customer-owned domains).
+21. **Deploy-credentials 7403:** `The given account is not valid or is not authorized` on D1 ops = the `CLOUDFLARE_ACCOUNT_ID` secret doesn't match the account holding the resource (multi-account OAuth shows two ids in `wrangler whoami` — easy to swap). GitHub secrets can't be read back; update blindly with the verified id.
+22. **Email status emoji (owner preference, PR #69):** DOWN/RECOVERED subjects are `[DOWN] 🔴 …` / `[RECOVERED] ✅ …` and bodies LEAD with `🔴 DOWN — client / monitor is down.` / `✅ RECOVERED — … is back up.` — keep the markers when editing `renderDownEmail`/`renderRecoveredEmail`; tests assert them.
 
-What #29 (first) actually needs, in order (RUNBOOK §1 is the checklist):
-- Real Cloudflare resources (D1 `morabeza-cf-uptime-db` weur, queues `morabeza-cf-uptime-checks`/`-dlq`, Email Service onboarding, Access app on `uptime.morabeza.digital/*` with an exact `/healthz` bypass, custom hostname);
-- Fill `database_id` in `wrangler.jsonc` (replace `OWNER_TO_FILL_AFTER_CREATION`);
-- GitHub `production` environment: required reviewers + least-privilege secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`);
-- Then: Actions → Deploy production → approve → walk RUNBOOK §2 manual steps + §3 smoke (automated subset runs in the job).
+---
 
-Cross-cutting notes only the current code knows:
+## 4. Remaining work — owner-led only (#30 rollout, #31 watchdog)
 
-- **Deep links are frozen contracts:** `/monitors/:id` and `/incidents/:id` are embedded in #17 alert emails — route shapes must never change.
-- **API conventions that must survive any future change:** envelope `{ data }` / `{ error: { category, message, requestId, details } }` (§38); pagination `{ data, pagination: { total, limit, offset } }` with limit hard-max 200; `recordAudit` on every mutation; Access actor via `c.get("actorEmail")`.
-- **Auth modes (§8.4, fail-closed):** runtime default `locked`; production ships `access` (wrangler var); `local` trusts `X-Dev-Access-Email` and is unreachable in prod as long as the deployed var isn't `local`. `ACCESS_TEAM_DOMAIN`/`ACCESS_AUDIENCE` stay OUT of the repo (owner sets at deploy in #29); access-mode-without-team-domain fails closed.
-- **Heartbeat freshness is ONE law** (`worker/lib/heartbeat.ts`): limits live in one place; /healthz collapses never_run → fresh; GET /api/system shows all three states. /healthz still does NOT monitor `last_cleanup_at` (operator-visible via /api/system since #26) — known follow-up candidate.
-- **Known unpicked follow-up candidates (flagged in reviews, none scheduled):** /healthz `last_cleanup_at`; #17 stale-`sending` notification_events reconciler; no un-archive path for archived clients (API supports `PATCH {active:true}`); TargetForm email regex is local (a worker/lib/notification-schema.ts would complete the SSOT pattern); export omits `enabled` (restore re-enables paused monitors — documented).
-- **Windows note:** LF/CRLF warnings on checkout are noise; lint passes regardless.
+**The system is LIVE.** #29 closed with all §32.3 items passing (see `docs/PRODUCTION-READINESS.md`). What remains is owner-domain work the agent supports on request:
 
-Sequence: **STOP — hand #29–#31 to the owner.**
+- **#30 — initial monitor rollout:** the owner chooses real monitors (§33 candidates: `morabeza.digital`, `contabilistas.cv`, `advocados.cv`, `/healthz` endpoints — NOT Cloudflare-hosted hosts, see §3d.20), adds them via UI or `POST /api/monitors/import`, then validates 24h of checks/incidents/emails.
+- **#31 — Upptime watchdog:** an EXTERNAL repo (outside Cloudflare) watching `/healthz` per §3.3/§8.2 — the agent can prepare the config files, but the repo must be the owner's.
+
+Agent guardrails: no new production resources, no credential handling, no scope invention — new wants (e.g. the slug-auto-fill UI request) become small issues first.
+
+Still-frozen contracts & known follow-up candidates (unchanged):
+
+- **Deep links** `/monitors/:id` + `/incidents/:id` are embedded in alert emails — never change route shapes. Error envelopes (§38), pagination shape, and auth modes are API contracts (§3.11).
+- **Heartbeat freshness is ONE law** (`worker/lib/heartbeat.ts`); /healthz still doesn't watch `last_cleanup_at`.
+- **Follow-up candidates:** slug auto-fill in forms (owner request, #29); /healthz `last_cleanup_at`; #17 stale-`sending` reconciler; un-archive path for clients; notification-schema SSOT extraction; export omits `enabled`; SHA-pin GitHub Actions (CSO watch item); redact smoke redirect Location (CSO watch item).
