@@ -125,6 +125,14 @@ describe("OverviewPage (PRD §27.3)", () => {
     expect(await screen.findByRole("img", { name: /average response time per hour/i })).toBeInTheDocument();
   });
 
+  it("shows the degraded heartbeat chip when a component went stale", async () => {
+    const degraded = fixture();
+    degraded.heartbeat = { status: "degraded", checks: { d1: true, scheduler: false, consumer: true } };
+    renderOverview(degraded);
+    expect(await screen.findByText("System degraded")).toBeInTheDocument();
+    expect(screen.queryByText("System healthy")).not.toBeInTheDocument();
+  });
+
   it("filters by status through the select (client + status + search are wired)", async () => {
     renderOverview(fixture());
     await screen.findByRole("table");

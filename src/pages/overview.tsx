@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
-import { StatusBadge, type MonitorStatus } from "../components/status-badge";
+import { StatusBadge, isMonitorStatus } from "../components/status-badge";
 import { StatCard } from "../components/stat-card";
 import { Sparkline } from "../components/sparkline";
 import { distinctClients, filterMonitorRows, OVERVIEW_PAGE_SIZE, paginate } from "./overview-filters";
@@ -263,7 +263,15 @@ function DashboardContent({ data: dashboard }: { data: DashboardDto }) {
                             </Link>
                           </td>
                           <td className="py-2 pr-3">
-                            <StatusBadge status={row.inMaintenance ? "maintenance" : (row.status as MonitorStatus)} />
+                            <StatusBadge
+                              status={
+                                row.inMaintenance
+                                  ? "maintenance"
+                                  : isMonitorStatus(row.status)
+                                    ? row.status
+                                    : "unknown"
+                              }
+                            />
                           </td>
                           <td className="py-2 pr-3"><UptimeCell value={row.uptime24h} /></td>
                           <td className="py-2 pr-3 font-mono">

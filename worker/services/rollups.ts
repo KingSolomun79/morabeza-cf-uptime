@@ -24,10 +24,11 @@
  * checks may carry NULL); avg is stored as the unrounded REAL — presentation
  * rounds at the edge (#20/#22), the PRD pins no rollup-side rounding.
  */
-import { and, eq, gte, gt, isNull, lt, or, sql } from "drizzle-orm";
+import { and, gte, gt, isNull, lt, or, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { checkResults, dailyRollups, hourlyRollups, incidents } from "../../db/schema";
 import type { AppDatabase } from "../lib/db";
+import { eligibleCheckConditions } from "./uptime";
 
 type RollupWrite = BatchItem<"sqlite">;
 
@@ -80,9 +81,7 @@ async function aggregateChecks(
     .from(checkResults)
     .where(
       and(
-        eq(checkResults.source, "scheduled"),
-        eq(checkResults.maintenanceExcluded, 0),
-        eq(checkResults.affectsState, 1),
+        ...eligibleCheckConditions(null),
         // Lexicographic comparisons are safe on ms-precision UTC ISO text.
         gte(checkResults.completedAt, windowStart),
         lt(checkResults.completedAt, windowEnd),

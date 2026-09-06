@@ -26,7 +26,7 @@
  * Statuses are derived from monitor_state (the state machine's truth), NOT
  * recomputed from checks.
  */
-import { and, asc, desc, eq, gt, gte, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, isNull, lte, lt, sql } from "drizzle-orm";
 import { clients, hourlyRollups, incidents, maintenanceWindows, monitorState, monitors } from "../../db/schema";
 import { getDb } from "../lib/db";
 import { nowIso } from "../lib/time";
@@ -95,7 +95,9 @@ async function activeWindows(db: ReturnType<typeof getDb>, now: string) {
     .where(
       and(
         isNull(maintenanceWindows.cancelledAt),
-        lt(maintenanceWindows.startsAt, now),
+        // Boundary law matches the checker's findActiveMaintenanceWindow:
+        // windows are [starts_at, ends_at).
+        lte(maintenanceWindows.startsAt, now),
         gt(maintenanceWindows.endsAt, now),
       ),
     );
@@ -156,8 +158,12 @@ export async function getDashboard(env: Env, opts: { now?: string } = {}): Promi
       })
       .from(incidents)
       .innerJoin(monitors, eq(monitors.id, incidents.monitorId))
+      // "Recoveries" = state-machine RECOVERED resolutions only — admin
+      // closes (monitor_disabled / admin) are deliberate, not recoveries.
       .where(and(eq(incidents.status, "resolved"), eq(incidents.resolutionReason, "recovered")))
       .orderBy(desc(incidents.resolvedAt))
+      // "Recent" = newest-ever, bounded by count; a time cutoff would hide
+      // recoveries on a quiet fleet.
       .limit(RECENT_RECOVERIES_LIMIT),
     db
       .select({
@@ -167,7 +173,14 @@ export async function getDashboard(env: Env, opts: { now?: string } = {}): Promi
         avgResponse: sql<number>`sum(${hourlyRollups.avgResponseTimeMs} * ${hourlyRollups.eligibleChecks}) / sum(${hourlyRollups.eligibleChecks})`,
       })
       .from(hourlyRollups)
-      .where(gte(hourlyRollups.hourStart, new Date(Date.parse(now) - DAY_MS).toISOString()))
+      .where(
+        and(
+          gte(hourlyRollups.hourStart, dayAgo),
+          // Upper bound: future-dated rollup rows (clock skew, recompute)
+          // must not leak into the trend.
+          lt(hourlyRollups.hourStart, now),
+        ),
+      )
       .groupBy(hourlyRollups.hourStart)
       .orderBy(asc(hourlyRollups.hourStart)),
     uptimeCountsByMonitor(db, dayAgo, now),
@@ -228,10 +241,15 @@ export async function getDashboard(env: Env, opts: { now?: string } = {}): Promi
     };
   });
 
-  // Trend points: hours where every rollup avg was NULL drop out (no signal).
+  // Trend points: hours where every rollup avg was NULL drop out (no
+  // signal); a legitimate 0 ms mean is kept (only NULL/NaN are dropped).
   const trend = trendRows
-    .map((row) => ({ hourStart: row.hourStart, avgResponseTimeMs: Math.round(Number(row.avgResponse ?? 0)) }))
-    .filter((point) => Number.isFinite(point.avgResponseTimeMs) && point.avgResponseTimeMs > 0);
+    .map((row) => ({
+      hourStart: row.hourStart,
+      raw: row.avgResponse === null ? null : Number(row.avgResponse),
+    }))
+    .filter((point): point is { hourStart: string; raw: number } => point.raw !== null && Number.isFinite(point.raw))
+    .map((point) => ({ hourStart: point.hourStart, avgResponseTimeMs: Math.round(point.raw) }));
 
   return {
     counts,
@@ -239,7 +257,9 @@ export async function getDashboard(env: Env, opts: { now?: string } = {}): Promi
       id: row.id,
       monitorId: row.monitorId,
       monitorName: row.monitorName,
-      resolvedAt: row.resolvedAt ?? now,
+      // Invariant: every close path sets resolved_at (services/rollups.ts
+      // downtime-semantics note) — non-null here by construction.
+      resolvedAt: row.resolvedAt as string,
       outageDurationMs: row.outageDurationMs,
     })),
     trend,

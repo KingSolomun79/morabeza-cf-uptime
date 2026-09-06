@@ -167,13 +167,14 @@ beforeAll(async () => {
     updatedAt: NOW,
   });
 
-  // Maintenance: monitor-scoped window covering mon_down at NOW.
+  // Maintenance: monitor-scoped window covering mon_down at NOW. startsAt
+  // EXACTLY at NOW pins the [start, end) boundary law shared with the checker.
   await db.insert(maintenanceWindows).values({
     id: "mnt_mon",
     title: "Beta Portal works",
     scopeType: "monitor",
     scopeId: "mon_down",
-    startsAt: new Date(Date.parse(NOW) - 3_600_000).toISOString(),
+    startsAt: NOW,
     endsAt: new Date(Date.parse(NOW) + 3_600_000).toISOString(),
     createdAt: NOW,
     updatedAt: NOW,
@@ -201,6 +202,8 @@ beforeAll(async () => {
   await seedHourly({ monitorId: "mon_up", hourStart: "2026-09-04T11:00:00.000Z", avgResponseTimeMs: 999, eligibleChecks: 5 });
   // An hour where every avg is NULL — no signal, dropped from the trend.
   await seedHourly({ monitorId: "mon_up", hourStart: "2026-09-06T09:00:00.000Z", avgResponseTimeMs: null, eligibleChecks: 4 });
+  // Future-dated rollup (clock skew) — must not leak into the trend.
+  await seedHourly({ monitorId: "mon_up", hourStart: "2026-09-07T00:00:00.000Z", avgResponseTimeMs: 777, eligibleChecks: 9 });
 }, 30000);
 
 afterAll(async () => {

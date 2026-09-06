@@ -93,10 +93,12 @@ function toNumber(value: unknown): number {
 
 /**
  * The §26 eligibility predicate, defined ONCE: every raw-check aggregate
- * (this service's per-monitor slice, the dashboard's grouped variant)
- * filters through this builder so downstream uptime math cannot diverge.
+ * (this service's per-monitor slice, the dashboard's grouped variant, and
+ * services/rollups.ts's hourly/daily aggregation) filters through this
+ * builder so downstream uptime math cannot diverge. PRD §26 verbatim:
+ * source='scheduled' AND maintenance_excluded=0 AND affects_state=1.
  */
-function eligibleCheckConditions(monitorId: ReturnType<typeof eq> | null) {
+export function eligibleCheckConditions(monitorId: ReturnType<typeof eq> | null) {
   const conditions = [
     eq(checkResults.source, "scheduled"),
     eq(checkResults.maintenanceExcluded, 0),
