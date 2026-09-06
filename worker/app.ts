@@ -17,6 +17,9 @@ import { maintenanceRoutes } from "./routes/maintenance";
 import { incidentsRoutes } from "./routes/incidents";
 import { dashboardRoutes } from "./routes/dashboard";
 import { monitorNotificationTargetsRoutes, notificationTargetsRoutes } from "./routes/notifications";
+import { notificationEventsRoutes } from "./routes/notification-events";
+import { systemRoutes } from "./routes/system";
+import { deadLettersRoutes } from "./routes/dead-letters";
 import type { AppEnv } from "./env";
 
 export function createApp(): Hono<AppEnv> {
@@ -78,6 +81,9 @@ export function createApp(): Hono<AppEnv> {
   api.route("/maintenance", maintenanceRoutes);
   api.route("/incidents", incidentsRoutes);
   api.route("/dashboard", dashboardRoutes);
+  api.route("/system", systemRoutes);
+  api.route("/dead-letters", deadLettersRoutes);
+  api.route("/notification-events", notificationEventsRoutes);
   api.route("/monitors", monitorNotificationTargetsRoutes);
   api.route("/monitors", monitorsRoutes);
 

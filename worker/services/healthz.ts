@@ -20,10 +20,16 @@
  */
 import { getSystemState } from "../repositories/system";
 import { logEvent } from "../lib/logging";
+import {
+  CONSUMER_FRESHNESS_LIMIT_MS,
+  SCHEDULER_FRESHNESS_LIMIT_MS,
+  isHeartbeatFresh,
+} from "../lib/heartbeat";
 import type { Env } from "../env";
 
-export const SCHEDULER_FRESHNESS_LIMIT_MS = 3 * 60 * 1000;
-export const CONSUMER_FRESHNESS_LIMIT_MS = 10 * 60 * 1000;
+// Re-exported for compatibility — the definitions live in lib/heartbeat.ts
+// (issue #26 extracted the shared freshness law so /api/system cannot drift).
+export { SCHEDULER_FRESHNESS_LIMIT_MS, CONSUMER_FRESHNESS_LIMIT_MS };
 
 export interface HealthChecks {
   d1: boolean;
@@ -34,13 +40,6 @@ export interface HealthChecks {
 export interface HealthResult {
   status: "ok" | "degraded";
   checks: HealthChecks;
-}
-
-/** Fresh-unknown (null/missing heartbeat) counts as fresh — see module doc. */
-function isFresh(at: string | null, nowMs: number, limitMs: number): boolean {
-  if (at === null) return true;
-  // Unparseable timestamps degrade (fail-closed): NaN <= limit is false.
-  return nowMs - Date.parse(at) <= limitMs;
 }
 
 export async function evaluateHealth(env: Env, now: string): Promise<HealthResult> {
@@ -71,8 +70,8 @@ export async function evaluateHealth(env: Env, now: string): Promise<HealthResul
 
   const checks: HealthChecks = {
     d1: true,
-    scheduler: isFresh(row?.lastSchedulerAt ?? null, nowMs, SCHEDULER_FRESHNESS_LIMIT_MS),
-    consumer: isFresh(row?.lastQueueConsumerAt ?? null, nowMs, CONSUMER_FRESHNESS_LIMIT_MS),
+    scheduler: isHeartbeatFresh(row?.lastSchedulerAt ?? null, nowMs, SCHEDULER_FRESHNESS_LIMIT_MS),
+    consumer: isHeartbeatFresh(row?.lastQueueConsumerAt ?? null, nowMs, CONSUMER_FRESHNESS_LIMIT_MS),
   };
   const degraded = !checks.scheduler || !checks.consumer;
   return { status: degraded ? "degraded" : "ok", checks };
