@@ -51,6 +51,27 @@ const MAX_BATCHES_PER_TABLE = 10_000;
 
 const DAY_MS = 86_400_000;
 
+/**
+ * Parses a wrangler `vars` value (string) into a positive integer day count.
+ * Absent/empty → §18 default; anything else that is not plain digits fails
+ * loud so the operator sees it in the DLQ instead of discovering
+ * wrong-sized history (rejects "7.5", "0", "-3", "0x10", "1e2", " 7").
+ *
+ * Shared by the retention handler (#19) and the uptime switchover (#20) so
+ * retention and uptime can never disagree about the raw window.
+ */
+export function parseRetentionDays(raw: string | undefined, name: string, fallback: number): number {
+  if (raw === undefined || raw === "") return fallback;
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`retention vars: ${name}="${raw}" is not a positive integer`);
+  }
+  const parsed = Number(raw);
+  if (parsed < 1) {
+    throw new Error(`retention vars: ${name}="${raw}" is not a positive integer`);
+  }
+  return parsed;
+}
+
 /** Configurable windows (the fixed policies live as constants above). */
 export interface RetentionWindows {
   rawCheckDays: number;

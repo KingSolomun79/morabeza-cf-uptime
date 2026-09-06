@@ -22,6 +22,7 @@ import {
 import { ApiError } from "../lib/errors";
 import { parseJsonBody, parseQuery } from "../lib/validation";
 import { requestManualCheck } from "../services/manual-check";
+import { getMonitorUptime, UPTIME_WINDOWS } from "../services/uptime";
 import type { AppEnv } from "../env";
 
 const listQuerySchema = z.object({
@@ -30,6 +31,11 @@ const listQuerySchema = z.object({
     .default("false")
     .transform((value) => value === "true"),
   clientId: z.string().min(1).optional(),
+});
+
+/** Defaults to 24h so the endpoint is dashboard-friendly (PRD §24/§26). */
+const uptimeQuerySchema = z.object({
+  window: z.enum(UPTIME_WINDOWS).default("24h"),
 });
 
 function assertNoForbiddenConfig(input: { headers: Record<string, string> | null; method: string; requestBody: string | null }): void {
@@ -138,4 +144,17 @@ monitorsRoutes.post("/:id/check", async (c) => {
     actorEmail: c.get("actorEmail"),
   });
   return c.json({ data: receipt }, 202);
+});
+
+/**
+ * Uptime per window (issue #20; PRD §24, §26): raw checks within retention,
+ * hourly rollups beyond, blended across the switchover. Unknown monitor →
+ * 404 envelope; invalid window → 400 validation envelope.
+ */
+monitorsRoutes.get("/:id/uptime", async (c) => {
+  const { window } = parseQuery(c, uptimeQuerySchema);
+  const monitorId = c.req.param("id");
+  await getMonitor(c.env, monitorId); // throws 404 not_found for unknown ids
+  const data = await getMonitorUptime(c.env, monitorId, window);
+  return c.json({ data });
 });
