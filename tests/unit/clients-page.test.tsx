@@ -134,6 +134,23 @@ describe("ClientsPage list (§27.6)", () => {
     fireEvent.click(within(row).getByRole("button", { name: "Confirm archive" }));
     await waitFor(() => expect(calls.filter((call) => call.method === "DELETE")).toHaveLength(1));
   });
+
+  it("client edit prefills the form and PATCHes #4 (AC edit leg)", async () => {
+    const calls = clientsApi([
+      ({ method, url }) => (method === "PATCH" && url === "/api/clients/cli_1" ? envelope(client("cli_1", "Alpha Renamed", "alpha-ltd")) : null),
+    ]);
+    renderAt("/clients/cli_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit client" }));
+    const name = await screen.findByLabelText("Name");
+    expect(name).toHaveValue("Alpha Ltd");
+    fireEvent.change(name, { target: { value: "Alpha Renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(1));
+    expect(calls.find((call) => call.method === "PATCH")?.url).toBe("/api/clients/cli_1");
+    expect(calls.find((call) => call.method === "PATCH")?.body).toMatchObject({ name: "Alpha Renamed", slug: "alpha-ltd" });
+  });
 });
 
 describe("ClientDetailPage (§27.6)", () => {

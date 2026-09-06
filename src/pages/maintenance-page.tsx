@@ -126,8 +126,8 @@ function MaintenanceForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="maintenance-title" className={labelClass}>Title</label>
-          <Input id="maintenance-title" value={values.title} aria-invalid={errors.title ? true : undefined} onChange={(event) => set("title", event.target.value)} />
-          {errors.title && <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.title}</p>}
+          <Input id="maintenance-title" value={values.title} aria-invalid={errors.title ? true : undefined} aria-describedby={errors.title ? "maintenance-title-error" : undefined} onChange={(event) => set("title", event.target.value)} />
+          {errors.title && <p id="maintenance-title-error" role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.title}</p>}
         </div>
         <div>
           <label htmlFor="maintenance-description" className={labelClass}>Description (optional)</label>
@@ -162,6 +162,7 @@ function MaintenanceForm({
               className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
               value={values.scopeId}
               aria-invalid={errors.scopeId ? true : undefined}
+              aria-describedby={errors.scopeId ? "maintenance-scopeId-error" : undefined}
               onChange={(event) => set("scopeId", event.target.value)}
             >
               <option value="">Select a {values.scopeType}…</option>
@@ -170,7 +171,7 @@ function MaintenanceForm({
                   <option key={option.id} value={option.id}>{option.label}</option>
                 ))}
             </select>
-            {errors.scopeId && <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.scopeId}</p>}
+            {errors.scopeId && <p id="maintenance-scopeId-error" role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.scopeId}</p>}
           </div>
         )}
       </div>
@@ -183,9 +184,10 @@ function MaintenanceForm({
             type="datetime-local"
             value={values.startsAtWall}
             aria-invalid={errors.startsAt ? true : undefined}
+            aria-describedby={errors.startsAt ? "maintenance-startsAt-error" : undefined}
             onChange={(event) => set("startsAtWall", event.target.value)}
           />
-          {errors.startsAt && <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.startsAt}</p>}
+          {errors.startsAt && <p id="maintenance-startsAt-error" role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.startsAt}</p>}
         </div>
         <div>
           <label htmlFor="maintenance-endsAt" className={labelClass}>Ends at (must be after start)</label>
@@ -194,9 +196,10 @@ function MaintenanceForm({
             type="datetime-local"
             value={values.endsAtWall}
             aria-invalid={errors.endsAt ? true : undefined}
+            aria-describedby={errors.endsAt ? "maintenance-endsAt-error" : undefined}
             onChange={(event) => set("endsAtWall", event.target.value)}
           />
-          {errors.endsAt && <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.endsAt}</p>}
+          {errors.endsAt && <p id="maintenance-endsAt-error" role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.endsAt}</p>}
         </div>
       </div>
 
@@ -270,7 +273,7 @@ export function MaintenancePage() {
       setNotice({ kind: "success", text: `Window "${input.title}" updated.` });
     } else {
       await saveMutation.mutateAsync({ mode: "create", body: input });
-      setNotice({ kind: "success", text: `Window "${input.title}" created for ${input.startsAt} UTC.` });
+      setNotice({ kind: "success", text: `Window "${input.title}" created for ${formatTimestamp(input.startsAt)} (display time).` });
     }
     setFormTarget(null);
     await invalidate();

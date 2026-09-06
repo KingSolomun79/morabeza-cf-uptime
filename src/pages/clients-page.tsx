@@ -21,10 +21,12 @@ import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
 import { StatusBadge, isMonitorStatus } from "../components/status-badge";
 
+// Mirrors SLUG_PATTERN in worker/routes/clients.ts — the server remains
+// authoritative; keep the two in sync (pinned by the clients-page tests).
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 interface Notice {
-  kind: "success" | "error" | "warning";
+  kind: "success" | "error";
   text: string;
   requestId?: string | null;
 }
@@ -78,13 +80,11 @@ function UptimeIndicator({ value }: { value: number | null }) {
 
 /** Shared client create/edit form (name/slug/notes; #4 endpoints). */
 function ClientForm({
-  mode,
   client,
   submitLabel,
   onSubmit,
   onCancel,
 }: {
-  mode: "create" | "edit";
   client?: ClientDto;
   submitLabel: string;
   onSubmit: (body: Record<string, unknown>) => Promise<void>;
@@ -108,10 +108,7 @@ function ClientForm({
     setSubmitting(true);
     setServerError(null);
     try {
-      const body: Record<string, unknown> =
-        mode === "create"
-          ? { name: name.trim(), slug: slug.trim(), notes: notes.trim() === "" ? null : notes.trim() }
-          : { name: name.trim(), slug: slug.trim(), notes: notes.trim() === "" ? null : notes.trim() };
+      const body = { name: name.trim(), slug: slug.trim(), notes: notes.trim() === "" ? null : notes.trim() };
       await onSubmit(body);
     } catch (cause) {
       if (cause instanceof UptimeApiError) setServerError(cause);
@@ -186,7 +183,11 @@ export function ClientsPage() {
       {notice && (
         <div
           role={notice.kind === "error" ? "alert" : "status"}
-          className="flex items-start justify-between gap-2 rounded-md border border-emerald-500/50 bg-emerald-500/10 p-3 text-sm"
+          className={
+            notice.kind === "error"
+              ? "flex items-start justify-between gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm"
+              : "flex items-start justify-between gap-2 rounded-md border border-emerald-500/50 bg-emerald-500/10 p-3 text-sm"
+          }
         >
           <span>
             {notice.text}
@@ -204,7 +205,6 @@ export function ClientsPage() {
           <CardContent>
             <ClientForm
               key="create"
-              mode="create"
               submitLabel="Create client"
               onSubmit={async (body) => {
                 await apiMutate<ClientDto>("/api/clients", "POST", body);
@@ -345,7 +345,7 @@ export function ClientDetailPage() {
     refetchInterval: 30_000,
   });
   const incidentsQuery = useQuery({
-    queryKey: ["incidents", 50],
+    queryKey: ["incidents", "client-detail"],
     queryFn: () => apiRequestEnvelope<MonitorIncidentDto[]>("/api/incidents?limit=200"),
     enabled: clientId !== "",
   });
@@ -429,7 +429,6 @@ export function ClientDetailPage() {
           <CardContent>
             <ClientForm
               key={`edit-${client.id}-${client.updatedAt}`}
-              mode="edit"
               client={client}
               submitLabel="Save changes"
               onSubmit={async (body) => {

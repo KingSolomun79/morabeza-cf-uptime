@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MaintenancePage } from "../../src/pages/maintenance-page";
+import { utcToWallInput, wallInputToUtcIso } from "../../src/lib/datetime-local";
 import type { MaintenanceWindowDto } from "../../src/types/monitor-detail";
 
 const T0 = Date.now();
@@ -138,7 +139,7 @@ describe("MaintenancePage form (§14.2 + UTC persistence)", () => {
       startsAt: "2026-09-05T11:00:00.000Z",
       endsAt: "2026-09-05T13:00:00.000Z",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent(/created for 2026-09-05T11:00:00\.000Z UTC/);
+    expect(await screen.findByRole("status")).toHaveTextContent(/created for 2026-09-05 10:00/);
   });
 
   it("blocks ends ≤ starts inline without calling the API", async () => {
@@ -191,5 +192,34 @@ describe("MaintenancePage form (§14.2 + UTC persistence)", () => {
     fireEvent.click(row.getByRole("button", { name: "Confirm cancel" }));
     await waitFor(() => expect(calls.filter((call) => call.method === "DELETE")).toHaveLength(1));
     expect(await screen.findByRole("status")).toHaveTextContent(/never re-activates/);
+  });
+
+  it("edit prefills display-zone wall times and PATCHes the identical window (AC edit leg)", async () => {
+    const calls = maintenanceApi([
+      ({ method, url }) => (method === "PATCH" && url === "/api/maintenance/mw_active" ? envelope(windowFixture({ title: "Renamed" })) : null),
+    ]);
+    renderPage();
+    const row = within(await screen.findByText("Active window").then((el) => el.closest("li")!));
+    fireEvent.click(row.getByRole("button", { name: "Edit" }));
+    await screen.findByLabelText("Maintenance form");
+
+    // mw_active starts at T0−60min. The prefill must be the Cape_Verde wall
+    // representation of that instant; minute-precision walls can't carry the
+    // fixture's sub-minute ms, so the round trip is asserted via the same
+    // conversion the form uses.
+    const originalStartsAt = windowFixture({}).startsAt;
+    const expectedWall = utcToWallInput(originalStartsAt);
+    expect(screen.getByLabelText(/Starts at/)).toHaveValue(expectedWall);
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(1));
+    expect(calls.find((call) => call.method === "PATCH")?.url).toBe("/api/maintenance/mw_active");
+    expect(calls.find((call) => call.method === "PATCH")?.body).toMatchObject({
+      title: "Renamed",
+      scopeType: "global",
+      scopeId: null,
+      startsAt: wallInputToUtcIso(expectedWall),
+    });
   });
 });

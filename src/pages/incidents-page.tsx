@@ -26,7 +26,8 @@ function IncidentStatusBadge({ status }: { status: MonitorIncidentDto["status"] 
     resolved: { label: "RESOLVED", variant: "success" },
     closed_admin: { label: "CLOSED", variant: "neutral" },
   };
-  const style = map[status];
+  // Forward-compat: render unknown future statuses as neutral text.
+  const style = map[status] ?? { label: status.toUpperCase(), variant: "neutral" as const };
   return (
     <Badge variant={style.variant} className="font-mono">{style.label}</Badge>
   );

@@ -7,7 +7,9 @@
  */
 import { DISPLAY_TIMEZONE } from "./time-format";
 
-const WALL_INPUT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+// datetime-local values are "YYYY-MM-DDTHH:mm"; tolerate an optional
+// seconds/fraction suffix (some browsers/setters produce it) by truncating.
+const WALL_INPUT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/;
 
 function zoneParts(utcMs: number, timeZone: string): { y: number; mo: number; d: number; h: number; mi: number; s: number } {
   const formatter = new Intl.DateTimeFormat("en-US", {
