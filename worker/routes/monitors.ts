@@ -23,6 +23,8 @@ import { ApiError } from "../lib/errors";
 import { parseJsonBody, parseQuery } from "../lib/validation";
 import { requestManualCheck } from "../services/manual-check";
 import { getMonitorUptime, UPTIME_WINDOWS } from "../services/uptime";
+import { listMonitorChecks } from "../services/checks";
+import { listIncidents } from "../services/incidents";
 import type { AppEnv } from "../env";
 
 const listQuerySchema = z.object({
@@ -31,6 +33,12 @@ const listQuerySchema = z.object({
     .default("false")
     .transform((value) => value === "true"),
   clientId: z.string().min(1).optional(),
+});
+
+/** Shared pagination for the detail-page lists (checks history, incidents). */
+const detailListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
 });
 
 /** Defaults to 24h so the endpoint is dashboard-friendly (PRD §24/§26). */
@@ -157,4 +165,29 @@ monitorsRoutes.get("/:id/uptime", async (c) => {
   await getMonitor(c.env, monitorId); // throws 404 not_found for unknown ids
   const data = await getMonitorUptime(c.env, monitorId, window);
   return c.json({ data });
+});
+
+/**
+ * Recent checks (issue #24; PRD §24, §27.5): paginated history for the
+ * detail page's checks table and response-time chart. Documented minimal
+ * §24 extension — read-only over check_results (#9 rows).
+ */
+monitorsRoutes.get("/:id/checks", async (c) => {
+  const query = parseQuery(c, detailListQuerySchema);
+  const monitorId = c.req.param("id");
+  await getMonitor(c.env, monitorId); // throws 404 not_found for unknown ids
+  const { items, total } = await listMonitorChecks(c.env, monitorId, query);
+  return c.json({ data: items, pagination: { total, limit: query.limit, offset: query.offset } });
+});
+
+/**
+ * Incidents for one monitor (issue #24; PRD §27.5): same open-first
+ * ordering as /api/incidents (#13), scoped to the monitor.
+ */
+monitorsRoutes.get("/:id/incidents", async (c) => {
+  const query = parseQuery(c, detailListQuerySchema);
+  const monitorId = c.req.param("id");
+  await getMonitor(c.env, monitorId); // throws 404 not_found for unknown ids
+  const { items, total } = await listIncidents(c.env, { ...query, monitorId });
+  return c.json({ data: items, pagination: { total, limit: query.limit, offset: query.offset } });
 });

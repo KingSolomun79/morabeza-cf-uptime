@@ -186,6 +186,8 @@ async function resolveIncidentForRecovery(db: AppDatabase, event: StateTransitio
 export interface IncidentListQuery {
   limit: number;
   offset: number;
+  /** Optional monitor scoping (#24 detail page); absent = all monitors. */
+  monitorId?: string;
 }
 
 /**
@@ -199,14 +201,16 @@ export async function listIncidents(
 ): Promise<{ items: IncidentDto[]; total: number }> {
   const db = getDb(env);
   const openFirst = sql`CASE WHEN ${incidents.status} = 'open' THEN 0 ELSE 1 END`;
+  const where = query.monitorId ? eq(incidents.monitorId, query.monitorId) : undefined;
   const rows = await db
     .select()
     .from(incidents)
+    .where(where)
     // id as the final tiebreaker keeps pagination stable for equal timestamps.
     .orderBy(openFirst, desc(incidents.openedAt), desc(incidents.id))
     .limit(query.limit)
     .offset(query.offset);
-  const [countRow] = await db.select({ value: sql<number>`count(*)` }).from(incidents);
+  const [countRow] = await db.select({ value: sql<number>`count(*)` }).from(incidents).where(where);
   return { items: rows.map(toIncidentDto), total: Number(countRow.value) };
 }
 
