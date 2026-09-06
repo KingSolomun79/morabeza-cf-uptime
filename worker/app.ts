@@ -6,9 +6,11 @@
  */
 import { Hono } from "hono";
 import { logEvent } from "./lib/logging";
+import { nowIso } from "./lib/time";
 import { errorEnvelope, ApiError } from "./lib/errors";
 import { originCheck, requireAccess } from "./lib/access";
 import { newId } from "./lib/ids";
+import { evaluateHealth } from "./services/healthz";
 import { clientsRoutes } from "./routes/clients";
 import { monitorsRoutes } from "./routes/monitors";
 import { maintenanceRoutes } from "./routes/maintenance";
@@ -35,11 +37,14 @@ export function createApp(): Hono<AppEnv> {
     });
   });
 
-  // Public, deliberately anonymous route (PRD §8.2, §19). Real degradation
-  // logic lands in issue #11.
-  app.get("/healthz", (c) => {
+  // Public, deliberately anonymous route (PRD §8.2, §19) — the ONE route
+  // outside the Access-protected surface: an external watchdog (issue #31)
+  // must be able to hit it with no identity. Real degradation checks (#11).
+  app.get("/healthz", async (c) => {
+    const health = await evaluateHealth(c.env, nowIso());
     c.header("Cache-Control", "no-store");
-    return c.json({ status: "ok" });
+    // Strictly the two-field contract: no ids, versions, or timestamps.
+    return c.json({ status: health.status }, health.status === "ok" ? 200 : 503);
   });
 
   // Private API surface — everything below is Access-protected (PRD §24).
