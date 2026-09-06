@@ -8,15 +8,16 @@
  * Heartbeat: `last_queue_consumer_at` is refreshed once per batch of real
  * work and powers /healthz degradation checks (#11, PRD §19).
  *
- * Handlers yet to land (#9 check execution, #17 email, #18/#19 housekeeping)
- * are registered as explicit not-implemented stubs: they fail loudly and land
- * in the DLQ rather than being silently dropped.
+ * Handlers yet to land (#19 retention cleanup) are registered as explicit
+ * not-implemented stubs: they fail loudly and land in the DLQ rather than
+ * being silently dropped.
  */
 import { logEvent } from "../lib/logging";
 import { touchQueueConsumerHeartbeat } from "../repositories/system";
 import { parseEnvelope, type Envelope, type MessageType, type PayloadOf } from "./schemas";
 import { createMonitorCheckHandler, type MonitorCheckDeps } from "./handlers/monitor-check";
 import { createNotificationSendHandler, type NotificationSendDeps } from "./handlers/notification-send";
+import { createDailyRollupHandler, createHourlyRollupHandler } from "./handlers/rollups";
 import type { Env } from "../env";
 
 export interface JobContext {
@@ -56,8 +57,8 @@ function notImplemented(type: MessageType): JobHandler<MessageType> {
 
 /**
  * The full V1 handler registry. Implemented handlers grow slice by slice:
- * #9 (monitor.check) and #17 (notification.send) are live, #18 (rollups)
- * and #19 (retention) stay fail-loud stubs until they land.
+ * #9 (monitor.check), #17 (notification.send) and #18 (rollups) are live;
+ * #19 (retention) stays a fail-loud stub until it lands.
  */
 export function defaultRegistry(
   checkerDeps: MonitorCheckDeps = {},
@@ -71,8 +72,8 @@ export function defaultRegistry(
       // the body stays intentionally empty (PRD §18: every-5-minutes
       // synthetic queue heartbeat keeps last_queue_consumer_at fresh).
     },
-    "rollup.hourly": notImplemented("rollup.hourly"),
-    "rollup.daily": notImplemented("rollup.daily"),
+    "rollup.hourly": createHourlyRollupHandler(),
+    "rollup.daily": createDailyRollupHandler(),
     "retention.cleanup": notImplemented("retention.cleanup"),
   };
 }
