@@ -227,8 +227,12 @@ export interface DownEmailInput {
 }
 
 export function renderDownEmail(input: DownEmailInput): { subject: string; text: string } {
-  const subject = `[DOWN] ${input.clientName} — ${input.monitorName}`;
+  // 🔴/✅ status emoji requested by the owner during the #29 smoke gate —
+  // subject AND body carry the state marker so alerts scan instantly.
+  const subject = `[DOWN] 🔴 ${input.clientName} — ${input.monitorName}`;
   const lines = [
+    `🔴 DOWN — ${input.clientName} / ${input.monitorName} is down.`,
+    "",
     `Client: ${input.clientName}`,
     `Monitor: ${input.monitorName}`,
     `URL: ${input.url}`,
@@ -252,8 +256,10 @@ export interface RecoveredEmailInput {
 }
 
 export function renderRecoveredEmail(input: RecoveredEmailInput): { subject: string; text: string } {
-  const subject = `[RECOVERED] ${input.clientName} — ${input.monitorName}`;
+  const subject = `[RECOVERED] ✅ ${input.clientName} — ${input.monitorName}`;
   const lines = [
+    `✅ RECOVERED — ${input.clientName} / ${input.monitorName} is back up.`,
+    "",
     `Client: ${input.clientName}`,
     `Monitor: ${input.monitorName}`,
     `Recovered at: ${input.recoveredAt}`,

@@ -210,7 +210,9 @@ describe("transition → intents → queued sends (§9.6 lifecycle, §32.1 matri
     expect(sendCalls).toHaveLength(1);
     expect(sendCalls[0].to).toBe("mapped@morabeza.digital");
     expect(sendCalls[0].from).toBe(FROM);
-    expect(sendCalls[0].subject).toBe(`[DOWN] Morabeza — Notify ${MAP}`);
+    expect(sendCalls[0].subject).toBe(`[DOWN] 🔴 Morabeza — Notify ${MAP}`);
+    // Owner-requested status emoji (#29): body leads with the 🔴 DOWN marker.
+    expect(sendCalls[0].text).toContain(`🔴 DOWN — Morabeza / Notify ${MAP} is down.`);
     expect(sendCalls[0].text).toContain(`URL: ${URL}`);
     expect(sendCalls[0].text).toContain("Failure reason: unexpected_status");
     expect(sendCalls[0].text).toContain("HTTP status: 500");
@@ -270,7 +272,8 @@ describe("transition → intents → queued sends (§9.6 lifecycle, §32.1 matri
     const sendsBefore = sendCalls.length;
     await drainQueueWith(sendConsumer());
     expect(sendCalls).toHaveLength(sendsBefore + 1);
-    expect(sendCalls[sendsBefore].subject).toBe(`[RECOVERED] Morabeza — Notify ${MAP}`);
+    expect(sendCalls[sendsBefore].subject).toBe(`[RECOVERED] ✅ Morabeza — Notify ${MAP}`);
+    expect(sendCalls[sendsBefore].text).toContain(`✅ RECOVERED — Morabeza / Notify ${MAP} is back up.`);
     expect(sendCalls[sendsBefore].text).toContain(`Recovered at: ${incident.resolvedAt}`);
     expect(sendCalls[sendsBefore].text).toContain("Outage duration:");
     expect(sendCalls[sendsBefore].text).toContain(`${LOCAL_ORIGIN}/incidents/${incident.id}`);
