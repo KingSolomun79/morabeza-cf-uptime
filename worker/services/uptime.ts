@@ -91,6 +91,21 @@ function toNumber(value: unknown): number {
   return Number(value ?? 0);
 }
 
+/**
+ * The §26 eligibility predicate, defined ONCE: every raw-check aggregate
+ * (this service's per-monitor slice, the dashboard's grouped variant)
+ * filters through this builder so downstream uptime math cannot diverge.
+ */
+function eligibleCheckConditions(monitorId: ReturnType<typeof eq> | null) {
+  const conditions = [
+    eq(checkResults.source, "scheduled"),
+    eq(checkResults.maintenanceExcluded, 0),
+    eq(checkResults.affectsState, 1),
+  ];
+  if (monitorId !== null) conditions.push(monitorId);
+  return conditions;
+}
+
 async function rawSliceCounts(
   db: AppDatabase,
   monitorId: string,
@@ -105,16 +120,46 @@ async function rawSliceCounts(
     .from(checkResults)
     .where(
       and(
-        eq(checkResults.monitorId, monitorId),
-        // §26 eligibility, verbatim.
-        eq(checkResults.source, "scheduled"),
-        eq(checkResults.maintenanceExcluded, 0),
-        eq(checkResults.affectsState, 1),
+        ...eligibleCheckConditions(eq(checkResults.monitorId, monitorId)),
         gte(checkResults.completedAt, windowStart),
         lte(checkResults.completedAt, windowEnd),
       ),
     );
   return { eligible: toNumber(row?.eligible), healthy: toNumber(row?.healthy) };
+}
+
+/**
+ * §26-eligible check counts for EVERY monitor over `[windowStart, windowEnd)`
+ * in ONE grouped aggregate — the dashboard's bounded-query path (#22; no
+ * per-monitor history fetches). Same predicate as `rawSliceCounts` (shared
+ * builder), same lexicographic window semantics.
+ */
+export async function uptimeCountsByMonitor(
+  db: AppDatabase,
+  windowStart: string,
+  windowEnd: string,
+): Promise<Map<string, SliceCounts>> {
+  const rows = await db
+    .select({
+      monitorId: checkResults.monitorId,
+      eligible: sql<number>`count(*)`,
+      healthy: sql<number>`coalesce(sum(${checkResults.isHealthy}), 0)`,
+    })
+    .from(checkResults)
+    .where(
+      and(
+        ...eligibleCheckConditions(null),
+        gte(checkResults.completedAt, windowStart),
+        lte(checkResults.completedAt, windowEnd),
+      ),
+    )
+    .groupBy(checkResults.monitorId);
+
+  const byMonitor = new Map<string, SliceCounts>();
+  for (const row of rows) {
+    byMonitor.set(row.monitorId, { eligible: toNumber(row.eligible), healthy: toNumber(row.healthy) });
+  }
+  return byMonitor;
 }
 
 async function rollupSliceCounts(
