@@ -35,6 +35,32 @@ export async function touchSchedulerHeartbeat(env: Env, at: string = nowIso()): 
     });
 }
 
+/** Set by the rollup.hourly handler on success (issue #18, PRD §18). */
+export async function touchHourlyRollupHeartbeat(env: Env, at: string = nowIso()): Promise<void> {
+  const db = getDb(env);
+  const now = nowIso();
+  await db
+    .insert(systemState)
+    .values({ id: SYSTEM_STATE_ID, lastHourlyRollupAt: at, updatedAt: now })
+    .onConflictDoUpdate({
+      target: systemState.id,
+      set: { lastHourlyRollupAt: at, updatedAt: now },
+    });
+}
+
+/** Set by the rollup.daily handler on success (issue #18, PRD §18). */
+export async function touchDailyRollupHeartbeat(env: Env, at: string = nowIso()): Promise<void> {
+  const db = getDb(env);
+  const now = nowIso();
+  await db
+    .insert(systemState)
+    .values({ id: SYSTEM_STATE_ID, lastDailyRollupAt: at, updatedAt: now })
+    .onConflictDoUpdate({
+      target: systemState.id,
+      set: { lastDailyRollupAt: at, updatedAt: now },
+    });
+}
+
 export async function getSystemState(env: Env): Promise<typeof systemState.$inferSelect | null> {
   const db = getDb(env);
   const [row] = await db.select().from(systemState).where(eq(systemState.id, SYSTEM_STATE_ID));

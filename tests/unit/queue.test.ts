@@ -156,11 +156,12 @@ describe("consumer batch semantics (PRD §37.9)", () => {
     const { env } = testDb;
     const consumer = createQueueConsumer();
 
+    // Only retention.cleanup remains a stub after #18 (rollups are live).
     const future = fakeMessage({
       v: 1,
-      type: "rollup.hourly",
-      jobId: "rollup:2026-09-05T11:00:00Z",
-      payload: { hourStart: "2026-09-05T11:00:00Z" },
+      type: "retention.cleanup",
+      jobId: "retention.cleanup:2026-09-05T00:00:00.000Z",
+      payload: {},
     });
 
     await consumer(fakeBatch(QUEUE_NAMES.checks, [future]), env);
