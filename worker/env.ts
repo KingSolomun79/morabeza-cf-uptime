@@ -20,6 +20,11 @@ export interface Env {
   EMAIL?: SendEmail;
   /** Configurable FROM address for notification emails (PRD §9.1). */
   DEFAULT_FROM_EMAIL?: string;
+  /**
+   * Build/version metadata surfaced by GET /api/system (issue #26; PRD
+   * §27.10). Non-secret; set in wrangler vars, bumped at deploy (#28).
+   */
+  APP_VERSION?: string;
 
   /**
    * Retention windows in days (issue #19; PRD §18) — non-secret wrangler

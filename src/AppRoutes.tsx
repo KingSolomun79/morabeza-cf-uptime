@@ -1,9 +1,9 @@
 /**
- * Route table (issues #21–#25; PRD §27.2): the shell layout wraps the nav
+ * Route table (issues #21–#26; PRD §27.2): the shell layout wraps the nav
  * sections; Overview (#22), Monitors (#23), monitor detail (#24), Clients +
- * Incidents + Maintenance (#25) are real pages. /monitors/:id and
- * /incidents/:id are the #17 email deep links — their shapes must stay
- * stable. Notifications (#26) and Import/Export (#27) remain placeholders.
+ * Incidents + Maintenance (#25), and Notifications + System (#26) are real
+ * pages. /monitors/:id and /incidents/:id are the #17 email deep links —
+ * their shapes must stay stable. Import/Export (#27) remains a placeholder.
  * Exported separately from App so tests can drive specific paths via
  * MemoryRouter.
  */
@@ -14,12 +14,10 @@ import { OverviewPage } from "./pages/overview";
 import { ClientsPage, ClientDetailPage } from "./pages/clients-page";
 import { IncidentsPage, IncidentDetailPage } from "./pages/incidents-page";
 import { MaintenancePage } from "./pages/maintenance-page";
-import {
-  ImportExportPage,
-  MonitorsPage,
-  NotificationsPage,
-  SystemPage,
-} from "./pages";
+import { NotificationsPage } from "./pages/notifications-page";
+import { SystemPage } from "./pages/system-page";
+import { MonitorsPage } from "./pages/monitors-page";
+import { ImportExportPage } from "./pages";
 
 // The detail page carries Recharts (~1/3 of the bundle) — load it only when
 // a deep link or table row actually needs it.

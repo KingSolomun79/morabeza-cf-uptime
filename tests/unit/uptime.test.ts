@@ -322,7 +322,12 @@ describe("GET /api/monitors/:id/uptime (PRD §24)", () => {
   }
 
   it("returns the uptime envelope for a known monitor", async () => {
-    await seedCheck({ monitorId: "mon_rt", completedAt: "2026-09-05T10:00:00.000Z" });
+    // Anchor to the real clock: the window is [now-24h, now), so an absolute
+    // fixture drifts out of it as the day advances (found the hard way).
+    await seedCheck({
+      monitorId: "mon_rt",
+      completedAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+    });
 
     const response = await get("/api/monitors/mon_rt/uptime?window=24h");
     expect(response.status).toBe(200);
