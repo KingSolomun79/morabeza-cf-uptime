@@ -117,7 +117,22 @@ jobs:
 
       # PRD §7.2 steps 4–5 (automatable subset): /healthz, Access gating of
       # / and /api/monitors, §29 security headers. Failing here fails the job.
+      # Bounded retries absorb the fresh-hostname race seen on the first real
+      # deploy (#29): a custom domain attaches seconds earlier and some
+      # resolvers still return stale/NXDOMAIN answers mid-propagation. A
+      # genuinely broken deployment fails all four attempts — still loud.
       - name: Smoke tests (PRD §32.3 automated subset)
         env:
           SMOKE_BASE_URL: ${{ inputs.app_url }}
-        run: node scripts/smoke.mjs "$SMOKE_BASE_URL"
+        run: |
+          ok=0
+          for attempt in 1 2 3 4; do
+            if node scripts/smoke.mjs "$SMOKE_BASE_URL"; then
+              ok=1
+              break
+            fi
+            [ "$attempt" = 4 ] && break
+            echo "smoke attempt $attempt failed — retrying in 30s (DNS/edge propagation?)"
+            sleep 30
+          done
+          [ "$ok" = 1 ] || { echo "::error::smoke failed after 4 attempts"; exit 1; }
