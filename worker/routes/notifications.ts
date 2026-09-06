@@ -1,10 +1,9 @@
 /**
- * Notification routing surface (issue #16; PRD §24, §27.9):
+ * Notification routing surface (issues #16 + #17; PRD §24, §27.9):
  * - /api/notification-targets — verified operational recipient records
+ * - POST /api/notification-targets/:id/test — test email through the queue
+ *   pipeline (never sent inline, PRD §42.14)
  * - /api/monitors/:id/notification-targets — explicit per-monitor mappings
- *
- * The test-email action (POST /api/notification-targets/:id/test) lands with
- * the email pipeline in issue #17.
  */
 import { Hono } from "hono";
 import { z } from "zod";
@@ -18,6 +17,7 @@ import {
   setMonitorTargets,
   updateTarget,
 } from "../repositories/notifications";
+import { queueTestEmail } from "../services/notifications";
 import { parseJsonBody } from "../lib/validation";
 import type { AppEnv } from "../env";
 
@@ -60,6 +60,26 @@ notificationTargetsRoutes.post("/", async (c) => {
 
 notificationTargetsRoutes.get("/:id", async (c) => {
   return c.json({ data: await getTarget(c.env, c.req.param("id")) });
+});
+
+/**
+ * Test email (issue #17; PRD §24): queues a `test` event through the same
+ * pipeline as alerts — the route NEVER sends inline (PRD §42.14). 202 =
+ * accepted for async delivery; the eventual outcome lives on the event row.
+ */
+notificationTargetsRoutes.post("/:id/test", async (c) => {
+  const id = c.req.param("id");
+  const target = await getTarget(c.env, id); // 404 surface for unknown ids
+  const { notificationEventId } = await queueTestEmail(c.env, id);
+  await recordAudit(c.env, {
+    actorEmail: c.get("actorEmail"),
+    action: "notification_target.test",
+    entityType: "notification_target",
+    entityId: id,
+    summary: `queued test email to ${target.email}`,
+    metadata: { notificationEventId },
+  });
+  return c.json({ data: { notificationEventId, queued: true } }, 202);
 });
 
 notificationTargetsRoutes.patch("/:id", async (c) => {

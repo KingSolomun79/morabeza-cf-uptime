@@ -12,6 +12,16 @@ export interface Env {
   CHECK_QUEUE: Queue;
 
   /**
+   * Cloudflare Email Service send binding (issue #17; PRD §9.2). Optional in
+   * the type because tests inject a fake sender and production provisioning
+   * happens in #29 — a handler that finds it missing at runtime fails loudly
+   * (recorded on the event, retried, then DLQ), never silently drops.
+   */
+  EMAIL?: SendEmail;
+  /** Configurable FROM address for notification emails (PRD §9.1). */
+  DEFAULT_FROM_EMAIL?: string;
+
+  /**
    * Public origin of this app; mutating /api requests must send a matching
    * Origin header (PRD §8.4). Local dev: e.g. http://localhost:5173
    */

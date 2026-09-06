@@ -193,10 +193,10 @@ export const notificationEvents = sqliteTable(
   "notification_events",
   {
     id: text("id").primaryKey(),
-    dedupeKey: text("dedupe_key").notNull(), // {incident_id}:{type}:{target_id}
-    monitorId: text("monitor_id")
-      .notNull()
-      .references(() => monitors.id),
+    dedupeKey: text("dedupe_key").notNull(),
+    // Nullable: `test` events (PRD §24) are sent to a target with no
+    // monitor context — only transition events carry a monitor.
+    monitorId: text("monitor_id").references(() => monitors.id),
     incidentId: text("incident_id").references(() => incidents.id),
     targetId: text("target_id")
       .notNull()

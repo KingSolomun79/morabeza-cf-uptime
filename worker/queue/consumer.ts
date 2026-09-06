@@ -16,6 +16,7 @@ import { logEvent } from "../lib/logging";
 import { touchQueueConsumerHeartbeat } from "../repositories/system";
 import { parseEnvelope, type Envelope, type MessageType, type PayloadOf } from "./schemas";
 import { createMonitorCheckHandler, type MonitorCheckDeps } from "./handlers/monitor-check";
+import { createNotificationSendHandler, type NotificationSendDeps } from "./handlers/notification-send";
 import type { Env } from "../env";
 
 export interface JobContext {
@@ -55,13 +56,16 @@ function notImplemented(type: MessageType): JobHandler<MessageType> {
 
 /**
  * The full V1 handler registry. Implemented handlers grow slice by slice:
- * #9 (monitor.check — live), #17 (notification.send), #18 (rollups),
- * #19 (retention).
+ * #9 (monitor.check) and #17 (notification.send) are live, #18 (rollups)
+ * and #19 (retention) stay fail-loud stubs until they land.
  */
-export function defaultRegistry(checkerDeps: MonitorCheckDeps = {}): JobHandlerMap {
+export function defaultRegistry(
+  checkerDeps: MonitorCheckDeps = {},
+  notificationDeps: NotificationSendDeps = {},
+): JobHandlerMap {
   return {
     "monitor.check": createMonitorCheckHandler(checkerDeps),
-    "notification.send": notImplemented("notification.send"),
+    "notification.send": createNotificationSendHandler(notificationDeps),
     "system.heartbeat": async () => {
       // Processing this job IS the heartbeat (batch-level update below);
       // the body stays intentionally empty (PRD §18: every-5-minutes
@@ -77,10 +81,12 @@ export interface ConsumerOptions {
   registry?: JobHandlerMap;
   /** Injected into the monitor.check handler (tests mock fetch). */
   checkerDeps?: MonitorCheckDeps;
+  /** Injected into the notification.send handler (tests fake the sender). */
+  notificationDeps?: NotificationSendDeps;
 }
 
 export function createQueueConsumer(options: ConsumerOptions = {}) {
-  const registry = options.registry ?? defaultRegistry(options.checkerDeps);
+  const registry = options.registry ?? defaultRegistry(options.checkerDeps, options.notificationDeps);
   return async function handleQueueBatch(batch: BatchLike, env: Env): Promise<void> {
     await touchQueueConsumerHeartbeat(env);
 

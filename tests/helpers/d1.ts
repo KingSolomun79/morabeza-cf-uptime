@@ -44,6 +44,10 @@ export async function createTestDb(overrides: Partial<Env> = {}): Promise<TestD1
 
   const env = {
     DB: d1,
+    // No-op queue producer: the #17 default pipeline enqueues notification
+    // sends on transitions. Tests that assert queue traffic pass their own
+    // recording fake via `overrides`.
+    CHECK_QUEUE: { send: async () => {}, sendBatch: async () => {} },
     APP_ACCESS_MODE: "local",
     APP_ORIGIN: LOCAL_ORIGIN,
     ...overrides,

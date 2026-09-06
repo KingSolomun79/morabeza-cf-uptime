@@ -15,6 +15,13 @@
       "when": 1788575869205,
       "tag": "0001_seed_and_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788651191922,
+      "tag": "0002_notification_test_events",
+      "breakpoints": true
     }
   ]
 }
