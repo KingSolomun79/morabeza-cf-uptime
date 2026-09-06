@@ -1,6 +1,6 @@
 # Handoff — Morabeza CF Uptime
 
-**Date:** 2026-09-06 · **State:** main green, 249/249 tests, CI passing · **Author:** agent session (state chain #13→#17→#11→**#18→#19→#20**)
+**Date:** 2026-09-06 · **State:** main green, 403/403 tests, CI passing · **Author:** agent session (state chain #18→#19→#20→UI era **#21→#22→#23→#24→#25**)
 
 ---
 
@@ -22,9 +22,11 @@ Build a Cloudflare-uptime monitor (single Worker + D1 + Queues + Email) from `do
 
 ## 2. Current state
 
-**Closed (merged):** #1–#6 #8 #9 #12 #10 #14 #15 #16 #13 #17 #11 **#18 #19 #20** — scaffold, ADRs, D1 schema, API shell + clients, monitors CRUD, HTTP checker, queue infra, monitor.check pipeline, state machine, cron scheduler, manual checks, maintenance windows, notification targets, incidents, the full email pipeline, real /healthz, **hourly/daily rollups, retention cleanup, and the uptime API**. The housekeeping chain is DONE: every V1 queue message type has a real handler — the DLQ is silent in steady state (only genuine failures land there).
+**Closed (merged):** #1–#6 #8 #9 #12 #10 #14 #15 #16 #13 #17 #11 #18 #19 #20 — scaffold, ADRs, D1 schema, API shell + clients, monitors CRUD, HTTP checker, queue infra, monitor.check pipeline, state machine, cron scheduler, manual checks, maintenance windows, notification targets, incidents, the full email pipeline, real /healthz, hourly/daily rollups, retention cleanup, and the uptime API.
 
-**Open, in dependency order:** **UI era #21 (foundation) → #22 (overview + dashboard API) → #23 (monitors) → #24 (monitor detail) → #25 (clients/incidents/maintenance) → #26 (notifications/system) → #27 (bulk import/export)** → #28 (deploy workflow, afk) → #29–#31 (HITL: provisioning, rollout, Upptime watchdog watching /healthz). #7 was closed via #18's PR (superseded: pipeline tests mock fetch against real miniflare D1).
+**UI era LANDED:** **#21** (UI foundation: router/shell/TanStack/tailwind/StatusBadge/envelope client) → **#22** (Overview dashboard + GET /api/dashboard) → **#23** (Monitors list + create/edit/duplicate forms + run-now/pause/archive actions; client-side validation REUSES worker zod schemas) → **#24** (monitor detail /monitors/:id: 4 uptime windows, Recharts chart with labeled maintenance overlays, paginated checks table + NEW GET /api/monitors/:id/checks and /:id/incidents) → **#25** (clients list + /clients/:id, incidents list + /incidents/:id detail with check timeline, maintenance create/edit/cancel with Cape_Verde wall-time inputs → UTC persistence; zero new API surface).
+
+**Open, in dependency order:** **#26 (notifications/system) → #27 (bulk import/export)** → #28 (deploy workflow, afk) → #29–#31 (HITL: provisioning, rollout, Upptime watchdog watching /healthz).
 
 ### Architecture as-built (map)
 
@@ -85,23 +87,38 @@ tests/unit/*          real D1 via miniflare (tests/helpers/d1.ts — includes a 
 14. **Retention/uptime var coupling (#19/#20):** `RAW_CHECK_RETENTION_DAYS`/`HOURLY_RETENTION_DAYS`/`DAILY_RETENTION_DAYS` (wrangler `vars`, strings) are parsed by the SHARED `parseRetentionDays` in `services/retention.ts` — `/^\d+$/`, fail-loud on garbage (retry → DLQ), §18 defaults when absent. The uptime raw→rollup switchover derives from the same parser so retention and uptime cannot disagree. Documented assumption: HOURLY_RETENTION_DAYS (90d) must cover a window's rollup span; no daily_rollups fallback (see services/uptime.ts header).
 15. **Uptime blend semantics (#20):** switchover is floored to the hour — rollups own hours strictly before it, raw owns `[switchover, now]`; the window's first (partial) hour participates WHOLE (a mid-hour window start never drops that hour's checks). Exact rollup↔raw agreement therefore holds only for hour-aligned fixtures (§32.1 fixtures align to hours). Weighted counts summed at full precision; rounding to 2 decimals happens ONCE, in `computeUptime` — consumers must not re-round. `source: "rollup"` is unreachable for now-anchored windows (kept for §24 wording).
 16. **D1 facts learned the hard way:** `db.run(sql…)` returns `meta.changes` (used for exact DELETE counting in #19's batch loop); row-value `IN` works for composite keys; D1 caps ~100 bound params/statement — tests seed in chunks of ≤6 check rows; `db.batch()` needs a non-empty tuple (destructure `[first, ...rest]`, spread).
-17. **Lint:** `@typescript-eslint/no-unused-vars` is an error (watch arrow-function listener bodies — `(e) => arr.push(e)` returns a number and fails the `void` listener type; use a block body). LF/CRLF warnings on Windows are noise. Long miniflare seed loops need per-test timeouts (`it("…", fn, 30000)`).
+17. **Lint:** `@typescript-eslint/no-unused-vars` is an error (watch arrow-function listener bodies — `(e) => arr.push(e)` returns a number and fails the `void` listener type; use a block body). LF/CRLF warnings on Windows are noise. Long miniflare seed loops need per-test timeouts (`it("…", fn, 30000)`). The react-hooks compiler lint ALSO errors on `Date.now()` during render — anchor "now" to `query.dataUpdatedAt` instead (maintenance page).
+
+---
+
+## 3b. UI-era contracts & gotchas (#21–#25, read before UI work)
+
+1. **Validation SSOT works cross-project:** `src/lib/monitor-form.ts` and `src/lib/maintenance-form.ts` import the worker's zod schemas (`worker/lib/monitor-schema.ts`, `worker/lib/maintenance-schema.ts`) — both are environment-agnostic (zod + URL/Intl only). STRUCTURALLY FRAGILE: any DOM/workerd-specific import added to those worker modules breaks the other tsconfig project. DTO types are NOT shared — `src/types/*.ts` mirrors are deliberate (disjoint lib universes), pinned by the api-* test contracts.
+2. **UI forms = pre-flight, server = authority:** client-side validation runs the same schemas, but every submit still handles the §38 error envelope — map `error.details[]` (`{path, message}`) back onto form fields (`serverFieldErrors` in monitors-form), and render `category` + `requestId` in the banner.
+3. **Envelope-level fetch mocks in jsdom tests:** handler chains must (a) fail LOUDLY on unexpected calls (`throw new Error("unexpected API call")`), (b) give every handler its OWN destructured `{method, url, body}` params (a closure over the mock's local `body` throws ReferenceError AFTER the call was recorded — assertion on recorded calls still passes, masking it), (c) be stateful for invalidate→refetch flows (mappings PUT → GET must return the new set).
+4. **jsdom/testing-library traps:** `getByText` sees only an element's DIRECT text nodes — for section titles with nested count spans, match `getByRole("heading", {name: …})` (accessible name includes descendants). JSX collapses whitespace between expression and element — `{name} <span>{email}</span>` renders with NO space; label queries must use looser regexes. Dependent queries gate on `enabled: !!parent`; pages reading `useParams` MUST be rendered inside a `<Route>` in tests.
+5. **Recharts:** explicit `width/height` (NO ResponsiveContainer — jsdom has no layout), `isAnimationActive={false}` (jsdom lacks getTotalLength), `<Legend />` gives the series a text name. The detail route is `React.lazy`'d so the ~109 kB gzip chart chunk stays off the eager bundle (main bundle unchanged). Maintenance overlays are BRACKETED by surrounding plotted points (`overlayRegionsForPoints`) — maintenance checks carry no response time, so windows often contain zero plotted points and naive "points inside window" logic renders nothing.
+6. **Deep links are contracts:** `/monitors/:id` (#24) and `/incidents/:id` (#25) are embedded in #17 alert emails — route shapes must never change; both render 404 cards with requestId for dead ids.
+7. **Timezones:** persisted = ms-precision UTC; displayed = `Atlantic/Cape_Verde` (§27.8). `src/lib/datetime-local.ts` does UTC↔datetime-local wall conversion (two-pass offset; midnight-crossing pinned by tests). Anchoring "now" in render: use `query.dataUpdatedAt`, never `Date.now()`.
+8. **No destructive UI anywhere:** archive/cancel are two-click confirm guards ("Confirm archive/cancel" + "Keep"); archived rows/clients/windows are read-only with explanatory copy. #25 left a noted follow-up: no un-archive path for archived clients (API supports `PATCH {active:true}`).
 
 
 ---
 
-## 4. Next era — UI (#21 → #27), then deploy/HITL
+## 4. Remaining work — #26 → #27, then deploy/HITL
 
-Do them **in number order** (#22 needs #21's foundation; #24 renders #20's uptime endpoint; #25/#26/#27 build on #21 components). Full specs live in `gh issue view NNN` — do **not** create new GitHub issues; these exist. There is no UI code yet — `dist/client` is the Vite scaffold shell; PRD §30's layout is the target shape.
+Do them **in number order** (#26 renders #16/#17 notification surfaces + system heartbeats; #27 reuses #23's form/validation SSOT for bulk import). Full specs live in `gh issue view NNN` — do **not** create new GitHub issues; these exist. The §27.2 nav has TWO placeholder routes left (Notifications, Import/Export); every other section is a real page.
 
 Cross-cutting notes only the current code knows:
 
-- **APIs the UI consumes are all live:** monitors CRUD + `POST /:id/check` (202) + `GET /:id/uptime?window=24h|7d|30d|90d` (#20: `{ data: { status: "ok"|"no_data", percentage (2-dp, null when no_data), eligibleChecks, healthyChecks, source: "raw"|"blended" } }`), incidents (open-first paginated `{ data, pagination }`), maintenance, notification targets + `POST /:id/test`, clients. #22 adds `GET /api/dashboard` — aggregate it from existing pieces (monitors + monitor_state + uptime service), don't recompute from raw.
-- **Pagination convention** (from `/api/incidents`): `{ data, pagination: { total, limit, offset } }` — reuse everywhere a list can grow (checks history in #24, dead letters in #26).
-- **Deep links already emitted in emails** (#17): `${APP_ORIGIN}/monitors/:id` and `${APP_ORIGIN}/incidents/:id` — #21/#24/#25 must honor these routes or the emails need a follow-up path fix.
-- **Error envelopes** (§38): `{ error: { category, message, requestId, details } }` — build the UI error handling around `category`, not messages.
+- **APIs the UI consumes are all live:** monitors CRUD + `POST /:id/check` (202) + `GET /:id/uptime?window=24h|7d|30d|90d`, incidents (open-first paginated + `/api/monitors/:id/incidents`), maintenance, notification targets + monitor mappings (`GET/PUT /api/monitors/:id/notification-targets`), clients, `GET /api/dashboard`, and `GET /api/monitors/:id/checks` (#24, paginated history).
+- **Pagination convention** (from `/api/incidents`): `{ data, pagination: { total, limit, offset } }` — checks/dead-letters reuse it; limit hard max is 200.
+- **Deep links already emitted in emails** (#17): `${APP_ORIGIN}/monitors/:id` and `${APP_ORIGIN}/incidents/:id` — both are REAL pages now; keep the shapes stable.
+- **Error envelopes** (§38): `{ error: { category, message, requestId, details } }` — build UI error handling around `category`, not messages; `details[]` maps to form fields.
 - **Auth in dev:** `APP_ACCESS_MODE=local` trusts `X-Dev-Access-Email`; production is Access JWT (`access` mode, fail-closed `locked` default). UI ships before provisioning (#29) — keep local mode working.
 - **`GET /:id/uptime` validation quirk:** invalid window on an unknown monitor returns 400 (validation runs before the 404) — deliberate, tested; don't "fix" asymmetry without a reason.
-- **System heartbeats for #26's system page:** `system_state` row has `last_scheduler_at`, `last_queue_consumer_at`, `last_hourly_rollup_at`, `last_daily_rollup_at`, `last_cleanup_at` (this last one is NOT yet surfaced in /healthz — candidate follow-up). Dead-letter rows come from `dead_letter_events` (DLQ consumer persists them).
+- **System heartbeats for #26's system page:** `system_state` row has `last_scheduler_at`, `last_queue_consumer_at`, `last_hourly_rollup_at`, `last_daily_rollup_at`, `last_cleanup_at` (the last one is NOT yet surfaced in /healthz — candidate follow-up). Dead-letter rows come from `dead_letter_events` (DLQ consumer persists them). The #22 dashboard already carries the heartbeat chip (`{status, checks:{d1,scheduler,consumer}}`).
+- **For #26's delivery log:** `notification_events` rows (with `monitor_id` nullable for test events) — no list endpoint exists yet; #26 likely adds one (envelope+pagination convention above).
+- **For #27:** monitor create validation is `createMonitorSchema` (worker/lib/monitor-schema.ts) — reuse it for import row validation; `findProbableDuplicate` powers the §17.2 duplicate warning (envelope `warning` sibling — read it with `apiRequestEnvelope`, NOT `apiMutate`).
 
-Sequence: **#21 → #22 → #23 → #24 → #25 → #26 → #27**, then **#28** (deploy workflow, afk) and the **#29–#31 HITL chain** (owner in the loop).
+Sequence: **#26 → #27**, then **#28** (deploy workflow, afk) and the **#29–#31 HITL chain** (owner in the loop).
