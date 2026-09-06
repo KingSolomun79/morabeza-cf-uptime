@@ -30,7 +30,16 @@ const EVENTS = [
 
 const MONITORS = [
   { id: "mon_1", clientId: "cli_1", name: "Alpha Site", url: "https://a.example.com/", method: "GET", headers: null, requestBody: null, expectedStatusCodes: [200], bodyContains: null, bodyNotContains: null, maxResponseTimeMs: null, intervalSeconds: 300, timeoutMs: 10000, failureThreshold: 3, recoveryThreshold: 2, cacheBust: false, enabled: true, tags: null, nextCheckAt: "", createdAt: "", updatedAt: "", archivedAt: null, state: null },
+  { id: "mon_2", clientId: "cli_1", name: "Alpha API", url: "https://api.example.com/", method: "GET", headers: null, requestBody: null, expectedStatusCodes: [200], bodyContains: null, bodyNotContains: null, maxResponseTimeMs: null, intervalSeconds: 300, timeoutMs: 10000, failureThreshold: 3, recoveryThreshold: 2, cacheBust: false, enabled: true, tags: null, nextCheckAt: "", createdAt: "", updatedAt: "", archivedAt: null, state: null },
+  { id: "mon_3", clientId: "cli_2", name: "Beta Site", url: "https://b.example.com/", method: "GET", headers: null, requestBody: null, expectedStatusCodes: [200], bodyContains: null, bodyNotContains: null, maxResponseTimeMs: null, intervalSeconds: 300, timeoutMs: 10000, failureThreshold: 3, recoveryThreshold: 2, cacheBust: false, enabled: true, tags: null, nextCheckAt: "", createdAt: "", updatedAt: "", archivedAt: null, state: null },
 ];
+
+// Bulk-apply panel fixture: the target starts mapped to mon_1 + mon_3.
+const MAPPINGS_BY_MONITOR: Record<string, string[]> = {
+  mon_1: ["tgt_1"],
+  mon_2: [],
+  mon_3: ["tgt_1"],
+};
 
 let mappings = ["tgt_1"];
 
@@ -56,10 +65,22 @@ function notificationsApi(extraHandlers: ApiHandler[] = []) {
             ? envelope(EVENTS, { pagination: { total: EVENTS.length, limit: 25, offset: 0 } })
             : null,
         ({ method, url }) => {
-          if (method === "GET" && url === "/api/monitors/mon_1/notification-targets") return envelope(mappings);
-          if (method === "PUT" && url === "/api/monitors/mon_1/notification-targets") {
-            mappings = (body as { targetIds: string[] })?.targetIds ?? mappings;
-            return envelope(mappings);
+          // Per-monitor mappings (#16): monitor_1 keeps the legacy mutable
+          // `mappings` fixture; the bulk panel fixtures come from the table.
+          if (url === "/api/monitors/mon_1/notification-targets") {
+            if (method === "GET") return envelope(mappings);
+            if (method === "PUT") {
+              mappings = (body as { targetIds: string[] })?.targetIds ?? mappings;
+              return envelope(mappings);
+            }
+          }
+          const monitorId = url.match(/^\/api\/monitors\/(mon_\d+)\/notification-targets$/)?.[1];
+          if (monitorId && monitorId !== "mon_1") {
+            if (method === "GET") return envelope(MAPPINGS_BY_MONITOR[monitorId] ?? []);
+            if (method === "PUT") {
+              MAPPINGS_BY_MONITOR[monitorId] = (body as { targetIds: string[] })?.targetIds ?? [];
+              return envelope(MAPPINGS_BY_MONITOR[monitorId]);
+            }
           }
           return null;
         },
@@ -180,5 +201,56 @@ describe("NotificationsPage (PRD §27.9)", () => {
       expect(put?.body).toEqual({ targetIds: ["tgt_1", "tgt_2"] });
     });
     await waitFor(() => expect(escalation).toBeChecked(), { timeout: 3000 });
+  });
+
+  it("bulk-apply panel: pre-checks mapped monitors, applies ONLY changes with merged target lists", async () => {
+    const calls = notificationsApi();
+    renderPage();
+    const opsRow = within((await screen.findByText("Ops")).closest("li")!);
+    fireEvent.click(opsRow.getByRole("button", { name: "Apply to monitors" }));
+
+    // Initial state reflects current mappings: mon_1 + mon_3 mapped, mon_2 not.
+    const mon1 = await screen.findByLabelText("Alpha Site (cli_1)");
+    const mon2 = screen.getByLabelText("Alpha API (cli_1)");
+    const mon3 = screen.getByLabelText("Beta Site (cli_2)");
+    expect(mon1).toBeChecked();
+    expect(mon2).not.toBeChecked();
+    expect(mon3).toBeChecked();
+
+    // Granular: check the unmapped monitor only → exactly 1 change pending.
+    fireEvent.click(mon2);
+    expect(mon2).toBeChecked();
+    expect(screen.getByRole("button", { name: /Apply changes \(1\)/ })).toBeInTheDocument();
+
+    // Select all is idempotent for already-mapped monitors (no new changes).
+    fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+    expect(screen.getByRole("button", { name: /Apply changes \(1\)/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Apply changes \(1\)/ }));
+    await screen.findByRole("status");
+
+    // Only the CHANGED monitor is PUT, with its MERGED target list; unchanged
+    // monitors (mon_1, mon_3) are never touched.
+    const puts = calls.filter((call) => call.method === "PUT");
+    expect(puts).toHaveLength(1);
+    expect(puts[0].url).toBe("/api/monitors/mon_2/notification-targets");
+    expect(puts[0].body).toEqual({ targetIds: ["tgt_1"] });
+    expect(await screen.findByRole("status")).toHaveTextContent(/1 updated/);
+  });
+
+  it("bulk-apply panel: unchecking a mapped monitor removes the target without touching others", async () => {
+    const calls = notificationsApi();
+    renderPage();
+    fireEvent.click(within((await screen.findByText("Ops")).closest("li")!).getByRole("button", { name: "Apply to monitors" }));
+
+    const mon3 = await screen.findByLabelText("Beta Site (cli_2)");
+    fireEvent.click(mon3); // was pre-checked → now removed
+    fireEvent.click(screen.getByRole("button", { name: /Apply changes \(1\)/ }));
+    await screen.findByRole("status");
+
+    const puts = calls.filter((call) => call.method === "PUT");
+    expect(puts).toHaveLength(1);
+    expect(puts[0].url).toBe("/api/monitors/mon_3/notification-targets");
+    expect(puts[0].body).toEqual({ targetIds: [] });
   });
 });

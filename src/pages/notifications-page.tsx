@@ -5,7 +5,7 @@
  * (status/attempts/last_error) so failed sends are visible without D1.
  */
 import { useMemo, useState, type FormEvent } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Plus, Send, X } from "lucide-react";
 import { apiMutate, apiRequest, apiRequestEnvelope, UptimeApiError } from "../lib/api";
 import { formatTimestamp } from "../lib/time-format";
@@ -210,6 +210,154 @@ function AssociationsEditor({ monitors }: { monitors: MonitorDto[] }) {
   );
 }
 
+/**
+ * Bulk "apply target to monitors" panel (#29 owner request): one checkbox per
+ * monitor — pre-checked where the target is already mapped — plus select
+ * all/clear, and a granular apply that PUTs ONLY the changed monitors with
+ * their merged target list (the #16 route replaces the full set, so unchanged
+ * monitors are never touched). Mappings load via the same per-monitor
+ * queries the AssociationsEditor uses (shared cache); if the fleet grows past
+ * a few hundred, replace the fan-out with a bulk endpoint.
+ */
+function ApplyToMonitorsPanel({
+  target,
+  monitors,
+  clientNameById,
+  onDone,
+}: {
+  target: { id: string; name: string };
+  monitors: MonitorDto[];
+  clientNameById: Map<string, string>;
+  onDone: (updated: number, failed: number) => void;
+}) {
+  const queryClient = useQueryClient();
+  // User intent per monitor; absent = "follow the loaded mapping state".
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const [applying, setApplying] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [applyError, setApplyError] = useState<string | null>(null);
+
+  const mappingQueries = useQueries({
+    queries: monitors.map((monitor) => ({
+      queryKey: ["monitor-notification-targets", monitor.id],
+      queryFn: () => apiRequest<string[]>(`/api/monitors/${monitor.id}/notification-targets`),
+      staleTime: 30_000,
+    })),
+  });
+  const mappingsLoaded = monitors.length === 0 || mappingQueries.every((query) => query.isSuccess);
+  // Index-aligned with `monitors` (useQueries preserves order). Recomputed
+  // per render — a Map over the fleet is trivially cheap.
+  const currentTargetsByMonitor = new Map<string, string[]>();
+  monitors.forEach((monitor, index) => currentTargetsByMonitor.set(monitor.id, mappingQueries[index]?.data ?? []));
+
+  const isChecked = (monitorId: string): boolean =>
+    overrides[monitorId] ?? (currentTargetsByMonitor.get(monitorId)?.includes(target.id) ?? false);
+  const isChanged = (monitorId: string): boolean =>
+    isChecked(monitorId) !== (currentTargetsByMonitor.get(monitorId)?.includes(target.id) ?? false);
+  const selectedCount = monitors.filter((monitor) => isChecked(monitor.id)).length;
+  const changedCount = monitors.filter((monitor) => isChanged(monitor.id)).length;
+
+  function setAll(checked: boolean) {
+    const next: Record<string, boolean> = {};
+    for (const monitor of monitors) next[monitor.id] = checked;
+    setOverrides((current) => ({ ...current, ...next }));
+  }
+
+  async function apply() {
+    const changed = monitors.filter((monitor) => isChanged(monitor.id));
+    setApplying(true);
+    setApplyError(null);
+    setProgress({ done: 0, total: changed.length });
+    let failed = 0;
+    for (const monitor of changed) {
+      const current = currentTargetsByMonitor.get(monitor.id) ?? [];
+      const next = isChecked(monitor.id)
+        ? [...new Set([...current, target.id])]
+        : current.filter((id) => id !== target.id);
+      try {
+        // PUT replaces the explicit mapping set (#16 route) — merged above.
+        await apiRequestEnvelope<string[]>(`/api/monitors/${monitor.id}/notification-targets`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetIds: next }),
+        });
+      } catch {
+        failed += 1;
+      }
+      setProgress((currentProgress) => ({ ...currentProgress, done: currentProgress.done + 1 }));
+    }
+    await queryClient.invalidateQueries({ queryKey: ["monitor-notification-targets"] });
+    setApplying(false);
+    onDone(changed.length - failed, failed);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          Apply "{target.name}" to monitors{" "}
+          <span className="text-sm font-normal text-muted-foreground">({selectedCount} of {monitors.length} selected)</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {monitors.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No monitors exist yet — create or import them first.</p>
+        ) : !mappingsLoaded ? (
+          <div aria-busy="true" aria-label="Loading monitor associations">
+            <Skeleton className="h-60 w-full" />
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={applying} onClick={() => setAll(true)}>Select all</Button>
+              <Button variant="outline" size="sm" disabled={applying} onClick={() => setAll(false)}>Clear all</Button>
+            </div>
+            {applyError && <p role="alert" className="text-sm text-destructive">{applyError}</p>}
+            <ul
+              className="max-h-80 space-y-1 overflow-y-auto rounded-md border p-2 text-sm"
+              aria-label={`Monitors for target ${target.name}`}
+            >
+              {monitors.map((monitor) => (
+                <li key={monitor.id}>
+                  <span className="flex items-center gap-2">
+                    <input
+                      id={`apply-${target.id}-${monitor.id}`}
+                      type="checkbox"
+                      checked={isChecked(monitor.id)}
+                      disabled={applying}
+                      onChange={(event) =>
+                        setOverrides((current) => ({ ...current, [monitor.id]: event.target.checked }))
+                      }
+                    />
+                    <label htmlFor={`apply-${target.id}-${monitor.id}`}>
+                      {monitor.name}{" "}
+                      <span className="text-muted-foreground">
+                        ({clientNameById.get(monitor.clientId) ?? monitor.clientId})
+                      </span>
+                    </label>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {applying && (
+              <p className="text-sm text-muted-foreground" aria-live="polite">
+                Applying… {progress.done}/{progress.total}
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              <Button disabled={applying || changedCount === 0} onClick={() => void apply()}>
+                {applying && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                Apply changes ({changedCount})
+              </Button>
+              <Button variant="outline" disabled={applying} onClick={() => onDone(0, 0)}>Close</Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function NotificationsPage() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -220,6 +368,7 @@ export function NotificationsPage() {
   >(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [applyTarget, setApplyTarget] = useState<{ id: string; name: string } | null>(null);
   const [eventsPage, setEventsPage] = useState(1);
 
   const targetsQuery = useQuery({
@@ -382,6 +531,14 @@ export function NotificationsPage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        title="Choose which monitors send alerts to this target"
+                        onClick={() => setApplyTarget({ id: target.id, name: target.name })}
+                      >
+                        Apply to monitors
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() =>
                           setFormTarget({ key: `edit-${target.id}`, mode: "edit", target })
                         }
@@ -421,6 +578,26 @@ export function NotificationsPage() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {applyTarget && (
+        <ApplyToMonitorsPanel
+          key={applyTarget.id}
+          target={applyTarget}
+          monitors={monitorsQuery.data ?? []}
+          clientNameById={clientNameById}
+          onDone={(updated, failed) => {
+            setApplyTarget(null);
+            if (updated > 0 || failed > 0) {
+              setNotice({
+                kind: failed > 0 ? "warning" : "success",
+                text:
+                  `Target "${applyTarget.name}" applied to monitors: ${updated} updated` +
+                  (failed > 0 ? `, ${failed} failed (retry from this panel).` : "."),
+              });
+            }
+          }}
+        />
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
