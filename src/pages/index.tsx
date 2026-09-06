@@ -1,13 +1,12 @@
 /**
- * The remaining §27.2 nav sections as placeholder routes (issues #21–#22;
- * Overview is now the real #22 dashboard). Real content lands in #23–#27;
- * the titles below are the canonical labels.
+ * The §27.2 nav sections (issues #21–#23; Overview is the real #22 dashboard,
+ * Monitors the real #23 page). Real content lands in #24–#27; the titles
+ * below are the canonical labels.
  */
 import { PlaceholderPage } from "./placeholder-page";
+import { MonitorsPage } from "./monitors-page";
 
-export function MonitorsPage() {
-  return <PlaceholderPage title="Monitors" description="Create, edit, pause, and archive monitored endpoints." />;
-}
+export { MonitorsPage };
 
 export function ClientsPage() {
   return <PlaceholderPage title="Clients" description="Group monitors by Morabeza client or site." />;
