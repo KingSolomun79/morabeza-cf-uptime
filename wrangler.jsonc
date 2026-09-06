@@ -18,12 +18,21 @@
     {
       "binding": "DB",
       "database_name": "morabeza-cf-uptime-db",
-      // OWNER ACTION (issue #29, PRD §35): replace with the real database id
-      // after creating the DB. The placeholder passes LOCAL config validation
-      // (`pnpm deploy:dry-run`, AC of #28) but remote migrations/deploy fail
-      // loudly until it is filled — deliberately (no half-configured deploys).
-      "database_id": "OWNER_TO_FILL_AFTER_CREATION",
+      // Real database id — created by the owner in WEUR (issue #29; PRD §35).
+      "database_id": "904168a3-1371-48e8-9c9e-8b9a105f7481",
       "migrations_dir": "db/migrations"
+    }
+  ],
+  // Custom hostname (issue #29; PRD §35): attaching here means the FIRST
+  // workflow deploy creates the domain itself — with workers_dev/preview_urls
+  // off there is no other URL, so the post-deploy smoke step can run. Requires
+  // the morabeza.digital zone on the same account; wrangler creates the DNS
+  // record automatically. Cloudflare Access on this hostname is configured
+  // separately (Zero Trust) and gates every path except /healthz.
+  "routes": [
+    {
+      "pattern": "uptime.morabeza.digital",
+      "custom_domain": true
     }
   ],
   "send_email": [
@@ -98,9 +107,9 @@
     "run_worker_first": ["/api/*", "/healthz"]
   }
 }
-// Final production configuration (issue #28; PRD §31). Provisioning of the
-// real resources — D1 database_id, queues, Email Service, Access, custom
-// hostname, deploy credentials — is the owner's HITL issue #29 (PRD §35).
+// Final production configuration (issue #28; PRD §31); database_id filled and
+// custom domain attached for #29 (PRD §35). Remaining provisioning — queues,
+// Email Service, Access, deploy credentials — is the owner's HITL issue #29.
 // No API tokens belong in this file (PRD §31).
 //
 // Local development: copy .dev.vars.example to .dev.vars — it overrides the
