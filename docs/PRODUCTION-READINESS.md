@@ -62,6 +62,18 @@ Every failure was loud, correctly scoped (no partial deploys), and followed by a
 - **Monitoring hygiene:** don't monitor hosts on your own platform zone (`*.cloudflare.com` failed instantly from inside a Worker); prefer neutral targets.
 - Pre-existing candidates (HANDOFF §4): `/healthz` `last_cleanup_at`, stale-`sending` reconciler, un-archive path, notification-schema SSOT, export `enabled` field.
 
+## Rollout record — #30 (2026-09-06)
+
+Initial monitor rollout executed by the owner with agent tooling:
+
+- **5 clients created:** Morabeza Agency · Morabeza Client · Solutional Agency · Solutional Client · Unassigned (client-form slug auto-fill shipped for this, PR #71).
+- **27 monitors imported** via `POST /api/monitors/import` from `import-monitors.local.json` (gitignored roster): result **27 created / 0 duplicates / 0 failed** — 11 Morabeza Agency, 4 Morabeza Client, 3 Solutional Agency, 3 Solutional Client, 6 Unassigned. All GET, 300s interval, expecting 200, thresholds 3/2.
+- **Alert routing:** email target bulk-applied to the fleet via the new **Apply to monitors** panel (PR #72 — checkbox per monitor, select all, only-changed merged PUTs).
+- **Smoke artifacts archived:** monitor `Smoke — always up` + client `Smoke Test` (archive, never delete; history retained).
+- **Shipped alongside:** README overhaul — full user guide, installation guide, API guide (incl. API monitor creation with client linkage + default-target alert routing).
+- **Known:** `socialmediamarketing.cv` entered the fleet already degraded (28% in the previous panel) — early DOWN alerts for it are expected/real.
+- **Open for #30:** the 24h stable-heartbeats observation window (started at import time) — close #30 after the owner confirms a clean day-cycle; batch-expanding to client sites stays gated on owner go-ahead.
+
 ## Cleanup state
 
 Smoke artifacts (`Smoke Test` client, `Smoke — always up` monitor at `example.com`/60s, notification target, maintenance window) left in place pending owner decision — archive (never delete) when done, or keep the monitor as a live canary.

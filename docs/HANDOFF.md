@@ -30,7 +30,7 @@ Build a Cloudflare-uptime monitor (single Worker + D1 + Queues + Email) from `do
 
 **#29 COMPLETE (production LIVE, owner-executed with agent support):** D1/queues/Email Service/Access/custom hostname provisioned; GitHub `production` environment (reviewer + branch policy + least-privilege secrets); first migrations + deploy approved through the #28 workflow; **full §32.3 smoke gate passed live** (all 15 items — failure/recovery/maintenance drills with exactly-once emails). Evidence + run history: **`docs/PRODUCTION-READINESS.md`**. Live fixes shipped during #29: CI-gate self-deadlock (PR #66), smoke DNS-race retries (PR #67), **workerd `Illegal invocation` on detached `fetch` — every check was failing until PR #68** (see §3.18), 🔴/✅ email emoji (PR #69). Owner-requested follow-up: slug auto-fill in forms.
 
-**Open (owner-led, in order):** **#30 initial monitor rollout** (real monitors via UI/import — §33 candidates) → **#31 Upptime watchdog** (EXTERNAL repo watching `/healthz`). Both `hitl`: #30 needs the owner's monitor list/choices; #31 is an external repo the owner creates. Agent supports on request. Full specs: `gh issue view NNN`.
+**Open (owner-led, in order):** **#30 rollout IN PROGRESS** — 27 monitors/5 clients imported and fleet-mapped to the email target on 2026-09-06 (see the rollout record in `docs/PRODUCTION-READINESS.md`); only its **24h stable-observation AC remains** — close after the owner confirms a clean day-cycle. → **#31 Upptime watchdog** (EXTERNAL repo watching `/healthz`). Also open: form slug auto-fill SHIPPED (PR #71); **README now carries the full user/installation/API guides** (incl. API monitor creation + default-target routing). Full specs: `gh issue view NNN`.
 
 ### Architecture as-built (map)
 
