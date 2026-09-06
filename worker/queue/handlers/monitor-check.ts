@@ -139,7 +139,12 @@ export function createMonitorCheckHandler(deps: MonitorCheckDeps = {}): JobHandl
     }
 
     const outcome = await runCheck(toCheckConfig(monitor), {
-      fetchImpl: deps.fetchImpl ?? fetch,
+      // WORKERD TRAP (found live in production, #29 smoke gate): the global
+      // `fetch` loses its `this` when passed as a value and called with an
+      // init object — `TypeError: Illegal invocation` on EVERY check. Bind it
+      // (or any injected replacement) to globalThis. Unit tests can't catch
+      // this: their fetch fakes are plain arrows with no `this` requirement.
+      fetchImpl: (deps.fetchImpl ?? fetch).bind(globalThis),
       checkId: payload.checkId,
       checkSlot: payload.scheduledFor ?? payload.checkId,
     });
