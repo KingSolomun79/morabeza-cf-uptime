@@ -28,7 +28,7 @@ beforeAll(async () => {
   client = createClient({ url: ":memory:" });
   const paths = Object.keys(migrationFiles).sort();
   // 0000_init_schema.sql + 0001_seed_and_guards.sql must both exist.
-  expect(paths.length).toBe(2);
+  expect(paths.length).toBe(3); // 0000 init + 0001 guards + 0002 notification test events
 
   for (const path of paths) {
     await client.executeMultiple(migrationFiles[path]);

@@ -53,7 +53,7 @@ beforeAll(async () => {
   db = getDb(env);
 
   const paths = Object.keys(migrationFiles).sort();
-  expect(paths.length).toBe(2);
+  expect(paths.length).toBe(3); // 0000 init + 0001 guards + 0002 notification test events
   for (const path of paths) {
     for (const statement of migrationFiles[path].split("--> statement-breakpoint")) {
       const lines = statement

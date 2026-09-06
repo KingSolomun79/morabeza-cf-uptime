@@ -24,9 +24,11 @@ import {
   type TransitionListener,
 } from "../../services/state-evaluation";
 import { handleIncidentLifecycle } from "../../services/incidents";
+import { handleNotificationIntents } from "../../services/notifications";
 import { findActiveMaintenanceWindow } from "../../repositories/maintenance";
 import { getDb } from "../../lib/db";
 import type { AppDatabase } from "../../lib/db";
+import type { Env } from "../../env";
 import { nowIso } from "../../lib/time";
 import { logEvent } from "../../lib/logging";
 import { claimUniqueRow } from "../idempotency";
@@ -45,14 +47,16 @@ type MonitorRow = typeof monitorsTable.$inferSelect;
 
 /**
  * Default post-CAS subscriber pipeline (PRD §16.4 steps 5–7): structured
- * transition log, then the incident lifecycle (#13). #17 appends notification
- * intents here. deps.onTransition replaces this whole pipeline (tests inject
- * spies); the seam still isolates any throw a listener lets escape.
+ * transition log, incident lifecycle (#13), then notification intents (#17)
+ * — in that order, so intents always anchor on a persisted incident. Injections
+ * (deps.onTransition) replace this whole pipeline (tests spy); the seam still
+ * isolates any throw a listener lets escape.
  */
-function defaultTransitionPipeline(db: AppDatabase): TransitionListener {
+function defaultTransitionPipeline(db: AppDatabase, env: Env): TransitionListener {
   return async (event) => {
     logTransitionEvent(event);
     await handleIncidentLifecycle(db, event);
+    await handleNotificationIntents(env, event);
   };
 }
 
@@ -188,10 +192,10 @@ export function createMonitorCheckHandler(deps: MonitorCheckDeps = {}): JobHandl
     // ONLY the claimer reaches this point (PRD §16.4 step 5). Evaluation is
     // gated inside on affects_state/maintenance_excluded/paused; the pure
     // core decides the transition and the CAS update applies it in order.
-    // The default pipeline opens/resolves incidents (#13); #17 enqueues
-    // notification intents — all anchored on this check result.
+    // The default pipeline runs incidents (#13) then notification intents
+    // (#17) — anchored on this check result.
     await evaluateCheckAgainstState(
-      { db, onTransition: deps.onTransition ?? defaultTransitionPipeline(db) },
+      { db, onTransition: deps.onTransition ?? defaultTransitionPipeline(db, ctx.env) },
       {
         monitorId: monitor.id,
         failureThreshold: monitor.failureThreshold,
