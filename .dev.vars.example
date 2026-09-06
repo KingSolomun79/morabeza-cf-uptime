@@ -1,6 +1,10 @@
 # Local development environment overrides (wrangler / Cloudflare Vite plugin).
-# Copy to `.dev.vars` — never commit the real file; production vars are set in
-# the deployment configuration (issue #28).
+# Copy to `.dev.vars` — never commit the real file.
+#
+# Since #28, wrangler.jsonc carries the PRODUCTION values (PRD §31):
+# APP_ACCESS_MODE=access, APP_ORIGIN=https://uptime.morabeza.digital, etc.
+# The two overrides below are what keep local dev on the §7.1 local-mode
+# flow — keep them whenever the local UI calls the local API.
 #
 # Local dev unlocks the API with injectable test identities (PRD §8.4).
 # Production MUST use APP_ACCESS_MODE=access (fail-closed elsewhere).

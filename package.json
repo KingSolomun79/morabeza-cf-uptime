@@ -18,7 +18,9 @@
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:local": "wrangler d1 migrations apply morabeza-cf-uptime-db --local"
+    "db:migrate:local": "wrangler d1 migrations apply morabeza-cf-uptime-db --local",
+    "deploy:dry-run": "pnpm build && wrangler deploy --dry-run",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.102.8",

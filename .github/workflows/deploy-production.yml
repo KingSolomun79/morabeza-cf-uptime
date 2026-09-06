@@ -1,0 +1,117 @@
+# Production deployment (issue #28; PRD §7.2, §31).
+#
+# Dispatch-only BY DESIGN — production never deploys on push/merge to main.
+# The `production` GitHub environment carries the required-reviewer approval
+# gate and the least-privilege secrets (configured by the owner in #29):
+#   CLOUDFLARE_API_TOKEN   Workers deploy + D1 + Queues only
+#   CLOUDFLARE_ACCOUNT_ID  the target account
+#
+# Sequence (PRD §7.2): verify clean CI → apply D1 migrations (remote) →
+# deploy Worker + assets → smoke tests. Every step fails the job loudly —
+# there is no partial silent deploy. The smoke script only automates part of
+# §32.3; the manual remainder is walked through from docs/RUNBOOK.md.
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: Base URL to smoke-test after deploy (the Access-protected origin)
+        required: false
+        default: https://uptime.morabeza.digital
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  deploy-production:
+    name: CI gate → migrations → deploy → smoke
+    # Required reviewer approval lives on this environment (repo Settings →
+    # Environments → production). The job does not start until approved.
+    # main-only is a structural backstop: the environment gate only enforces
+    # after the owner creates `production` with protection rules (RUNBOOK §1),
+    # so a dispatch from any other branch is refused here regardless.
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # version is read from package.json#packageManager
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # PRD §7.2 step 1: verify clean CI on EXACTLY this commit before any
+      # production mutation. Waits for pending runs; any failure or a commit
+      # with no CI runs aborts the deploy.
+      - name: Verify CI is green on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha="${{ github.sha }}"
+          for attempt in $(seq 1 30); do
+            summary="$(gh api "repos/${{ github.repository }}/commits/$sha/check-runs" --paginate \
+              | jq -rs '[.[].check_runs[]] |
+                  {
+                    total:   length,
+                    pending: [.[] | select(.status != "completed")] | length,
+                    failed:  [.[] | select(.status == "completed" and
+                               (.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped"))] | length
+                  }')"
+            echo "attempt $attempt: $summary"
+            if [ "$(jq .failed <<<"$summary")" -gt 0 ]; then
+              echo "::error::CI check runs FAILED on $sha — refusing to deploy"
+              exit 1
+            fi
+            if [ "$(jq .total <<<"$summary")" -gt 0 ] && [ "$(jq .pending <<<"$summary")" -eq 0 ]; then
+              echo "All check runs green on $sha"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::CI never completed on $sha (or no check runs at all) — refusing to deploy"
+          exit 1
+
+      - name: Build client + worker (vite)
+        run: pnpm build
+
+      # PRD §7.2 step 2 — remote migrations run BEFORE the deploy; a failed
+      # migration aborts before any new code ships (fail loudly, no partial).
+      - name: Apply D1 migrations to production
+        run: pnpm wrangler d1 migrations apply morabeza-cf-uptime-db --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # PRD §7.2 step 3 — `wrangler deploy` uses the Vite build output config
+      # automatically. APP_VERSION is stamped per deployment for /api/system.
+      # (Shell var, NOT GITHUB_ENV: GITHUB_ENV only reaches SUBSEQUENT steps —
+      # reading it in the same step would deploy an empty APP_VERSION.)
+      - name: Deploy Worker + static assets
+        run: |
+          VERSION="$(node -p "require('./package.json').version")+run-$GITHUB_RUN_NUMBER-$(git rev-parse --short HEAD)"
+          pnpm wrangler deploy --var "APP_VERSION:$VERSION"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # PRD §7.2 steps 4–5 (automatable subset): /healthz, Access gating of
+      # / and /api/monitors, §29 security headers. Failing here fails the job.
+      - name: Smoke tests (PRD §32.3 automated subset)
+        env:
+          SMOKE_BASE_URL: ${{ inputs.app_url }}
+        run: node scripts/smoke.mjs "$SMOKE_BASE_URL"
