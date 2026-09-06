@@ -1,31 +1,85 @@
+@import "tailwindcss";
+
+/* Class-based dark mode (ThemeToggle toggles `dark` on <html>). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens (independent Morabeza palette — no styling copied from the
+ * reference project, PRD §3.2/§27.1). shadcn-style semantic variables so
+ * components stay theme-driven; values in oklch.
+ */
 :root {
-  color-scheme: light dark;
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    sans-serif;
-  line-height: 1.5;
+  --background: oklch(0.98 0.005 106);
+  --foreground: oklch(0.22 0.02 150);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.02 150);
+  --primary: oklch(0.55 0.13 155);
+  --primary-foreground: oklch(0.99 0.01 120);
+  --secondary: oklch(0.94 0.02 130);
+  --secondary-foreground: oklch(0.3 0.04 150);
+  --muted: oklch(0.95 0.01 120);
+  --muted-foreground: oklch(0.5 0.02 150);
+  --accent: oklch(0.93 0.04 100);
+  --accent-foreground: oklch(0.3 0.04 150);
+  --destructive: oklch(0.55 0.2 25);
+  --destructive-foreground: oklch(0.99 0.01 120);
+  --border: oklch(0.9 0.01 130);
+  --input: oklch(0.9 0.01 130);
+  --ring: oklch(0.55 0.13 155);
 }
 
-* {
-  box-sizing: border-box;
+.dark {
+  --background: oklch(0.21 0.02 160);
+  --foreground: oklch(0.95 0.01 120);
+  --card: oklch(0.25 0.02 160);
+  --card-foreground: oklch(0.95 0.01 120);
+  --primary: oklch(0.72 0.13 155);
+  --primary-foreground: oklch(0.2 0.03 160);
+  --secondary: oklch(0.3 0.03 160);
+  --secondary-foreground: oklch(0.93 0.01 120);
+  --muted: oklch(0.3 0.02 160);
+  --muted-foreground: oklch(0.7 0.02 140);
+  --accent: oklch(0.33 0.04 150);
+  --accent-foreground: oklch(0.95 0.01 120);
+  --destructive: oklch(0.65 0.19 25);
+  --destructive-foreground: oklch(0.15 0.02 160);
+  --border: oklch(0.35 0.02 160);
+  --input: oklch(0.35 0.02 160);
+  --ring: oklch(0.72 0.13 155);
 }
 
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: Canvas;
-  color: CanvasText;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
 
-.app-shell {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 2rem 1.25rem;
-}
-
-a {
-  color: LinkText;
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family:
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+  }
 }
