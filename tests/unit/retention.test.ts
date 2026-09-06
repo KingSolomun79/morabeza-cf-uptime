@@ -319,7 +319,7 @@ describe("runRetentionCleanup boundaries (PRD §18)", () => {
 
   it("clears a >500-row backlog with the default batch size (real loop, not one statement)", async () => {
     // D1 caps bound parameters per statement, so seed in small chunks
-    // (6 rows × 16 columns = 96 params, under D1's 100-param limit).
+    // (6 rows × 11 bound columns = 66 params, under D1's 100-param limit).
     const values = Array.from({ length: 600 }, (_, i) => ({
       id: `chk-backlog-${i}`,
       monitorId: "mon_ret",
@@ -353,6 +353,9 @@ async function invokeCleanup(envOverrides: Record<string, string>, jobId: string
 
 describe("retention.cleanup handler (issue #19)", () => {
   it("applies vars overrides and prunes at the configured windows", async () => {
+    // NOTE: assertions below are EXISTENCE-based on this test's own seeds —
+    // the shared D1 still holds boundary-test survivors that a 1-day window
+    // also prunes; never add count assertions here without isolating seeds.
     const old = new Date(Date.now() - 2 * DAY_MS).toISOString();
     const fresh = new Date(Date.now() - 12 * 3_600_000).toISOString();
     await seedCheck({ id: "chk-var-old", completedAt: old });

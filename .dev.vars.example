@@ -6,3 +6,9 @@
 # Production MUST use APP_ACCESS_MODE=access (fail-closed elsewhere).
 APP_ACCESS_MODE=local
 APP_ORIGIN=http://localhost:5173
+
+# Retention windows in days (issue #19; PRD §18 defaults shown). Non-secret:
+# also declared in wrangler.jsonc vars; overrides belong here for local dev.
+#RAW_CHECK_RETENTION_DAYS=7
+#HOURLY_RETENTION_DAYS=90
+#DAILY_RETENTION_DAYS=730

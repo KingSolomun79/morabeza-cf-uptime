@@ -31,13 +31,17 @@ import type { JobContext, JobHandler } from "../consumer";
 
 /**
  * Parses a wrangler `vars` value (string) into a positive integer day count.
- * Absent/empty → §18 default; anything else unparseable fails loud so the
- * operator sees it in the DLQ instead of discovering wrong-sized history.
+ * Absent/empty → §18 default; anything else that is not plain digits fails
+ * loud so the operator sees it in the DLQ instead of discovering
+ * wrong-sized history (rejects "7.5", "0", "-3", "0x10", "1e2", " 7").
  */
 export function parseRetentionDays(raw: string | undefined, name: string, fallback: number): number {
   if (raw === undefined || raw === "") return fallback;
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`retention.cleanup: ${name}="${raw}" is not a positive integer`);
+  }
   const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 1) {
+  if (parsed < 1) {
     throw new Error(`retention.cleanup: ${name}="${raw}" is not a positive integer`);
   }
   return parsed;
