@@ -122,6 +122,34 @@ describe("ClientsPage list (§27.6)", () => {
     expect(calls.find((call) => call.method === "POST")?.body).toEqual({ name: "Gamma", slug: "gamma", notes: null });
   });
 
+  it("auto-fills the slug from the name until the slug is manually edited (#29)", async () => {
+    const calls = clientsApi([
+      ({ method }) => (method === "POST" ? envelope(client("cli_10", "Cabo Verde WebDesign", "cabo-verde-webdesign"), {}, 201) : null),
+    ]);
+    renderAt("/clients");
+    fireEvent.click(await screen.findByRole("button", { name: "New client" }));
+
+    const name = screen.getByLabelText("Name");
+    const slug = screen.getByLabelText("Slug");
+
+    // Typing the name derives the slug live (lowercase, hyphen-separated).
+    fireEvent.change(name, { target: { value: "Cabo Verde WebDesign" } });
+    expect(slug).toHaveValue("cabo-verde-webdesign");
+
+    // A manual slug edit stops the auto-fill: later name edits don't override.
+    fireEvent.change(slug, { target: { value: "cvwd" } });
+    fireEvent.change(name, { target: { value: "Cabo Verde WebDesign Ltd" } });
+    expect(slug).toHaveValue("cvwd");
+
+    fireEvent.click(screen.getByRole("button", { name: "Create client" }));
+    await waitFor(() => expect(calls.filter((call) => call.method === "POST")).toHaveLength(1));
+    expect(calls.find((call) => call.method === "POST")?.body).toEqual({
+      name: "Cabo Verde WebDesign Ltd",
+      slug: "cvwd",
+      notes: null,
+    });
+  });
+
   it("guards archive behind a confirm step (no hard delete)", async () => {
     const calls = clientsApi([
       ({ method, url }) => (method === "DELETE" && url === "/api/clients/cli_1" ? envelope(client("cli_1", "Alpha Ltd", "alpha-ltd")) : null),

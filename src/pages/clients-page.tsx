@@ -10,6 +10,7 @@ import { Link, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Plus, RefreshCw, X } from "lucide-react";
 import { apiMutate, apiRequest, apiRequestEnvelope, UptimeApiError } from "../lib/api";
+import { slugifyName } from "../lib/utils";
 import { formatRelative } from "../lib/time-format";
 import type { ClientDto } from "../types/monitor";
 import type { DashboardDto } from "../types/dashboard";
@@ -92,6 +93,7 @@ function ClientForm({
 }) {
   const [name, setName] = useState(client?.name ?? "");
   const [slug, setSlug] = useState(client?.slug ?? "");
+  const [slugTouched, setSlugTouched] = useState(client !== undefined);
   const [notes, setNotes] = useState(client?.notes ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<UptimeApiError | null>(null);
@@ -129,12 +131,33 @@ function ClientForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="client-name" className="mb-1 block text-xs font-medium text-muted-foreground">Name</label>
-          <Input id="client-name" value={name} aria-invalid={errors.name ? true : undefined} onChange={(event) => setName(event.target.value)} />
+          <Input
+            id="client-name"
+            value={name}
+            aria-invalid={errors.name ? true : undefined}
+            onChange={(event) => {
+              const next = event.target.value;
+              setName(next);
+              // Owner request (#29): auto-derive the slug while the user has
+              // not customised it; edit mode starts untouched=false→true so
+              // existing slugs are never silently rewritten.
+              if (!slugTouched) setSlug(slugifyName(next));
+            }}
+          />
           {errors.name && <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.name}</p>}
         </div>
         <div>
           <label htmlFor="client-slug" className="mb-1 block text-xs font-medium text-muted-foreground">Slug</label>
-          <Input id="client-slug" value={slug} aria-invalid={errors.slug ? true : undefined} onChange={(event) => setSlug(event.target.value)} />
+          <Input
+            id="client-slug"
+            value={slug}
+            aria-invalid={errors.slug ? true : undefined}
+            onChange={(event) => {
+              setSlugTouched(true);
+              setSlug(event.target.value);
+            }}
+          />
+          {!slugTouched && <p className="mt-1 text-xs text-muted-foreground">Auto-filled from the name — edit to override.</p>}
           {errors.slug && <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.slug}</p>}
         </div>
       </div>

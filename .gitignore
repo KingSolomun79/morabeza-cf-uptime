@@ -7,3 +7,6 @@ coverage/
 .zcode/
 .DS_Store
 Thumbs.db
+
+# Owner operational imports (client roster stays out of git)
+import-monitors.local.json
