@@ -191,11 +191,18 @@ export function validateMonitorConfig(input: MonitorConfigInput): MonitorFormVal
   if (conflict) {
     errors.requestBody = conflict;
   }
+  // A row with a value but no name parses to the "" key — surface it under
+  // the headers field (the editor renders per-row inputs, not per-key).
+  if (input.headers && "" in input.headers && errors.headers === undefined) {
+    errors.headers = "every header needs a name — fill in or remove the blank row";
+  }
 
   const result = createMonitorSchema.safeParse(input);
   if (!result.success) {
     for (const issue of result.error.issues) {
-      const field = typeof issue.path[0] === "string" ? issue.path[0] : String(issue.path[0] ?? "form");
+      let field = typeof issue.path[0] === "string" ? issue.path[0] : String(issue.path[0] ?? "form");
+      // Record-key issues land on the "" path — map them to the headers field.
+      if (field === "") field = "headers";
       // First error per field wins; semantic errors above take precedence.
       if (errors[field] === undefined) {
         errors[field] = issue.message;

@@ -222,7 +222,7 @@ export function MonitorsPage() {
               mode={formTarget.mode}
               monitor={formTarget.mode === "create" ? undefined : formTarget.monitor}
               clients={clientsQuery.data ?? []}
-              submitLabel={formTarget.mode === "create" ? "Create monitor" : "Save changes"}
+              submitLabel={formTarget.mode === "edit" ? "Save changes" : "Create monitor"}
               onSubmit={async (input) => {
                 if (formTarget.mode === "edit") await handleEdit(formTarget.monitor, input);
                 else await handleCreate(input);
@@ -318,7 +318,13 @@ export function MonitorsPage() {
                       id="monitors-include-archived"
                       type="checkbox"
                       checked={includeArchived}
-                      onChange={(event) => { setIncludeArchived(event.target.checked); setPage(1); }}
+                      onChange={(event) => {
+                        setIncludeArchived(event.target.checked);
+                        // The Archived status option unmounts with the toggle —
+                        // a stale "archived" value would filter invisibly.
+                        setStatusFilter((current) => (current === "archived" && !event.target.checked ? "" : current));
+                        setPage(1);
+                      }}
                     />
                     <label htmlFor="monitors-include-archived">Include archived</label>
                   </span>
@@ -376,7 +382,7 @@ export function MonitorsPage() {
                               {row.archived ? (
                                 <span className="text-xs text-muted-foreground">Archived monitors are read-only.</span>
                               ) : (
-                                <div className="flex flex-wrap gap-1" aria-label={`Actions for ${row.name}`}>
+                                <div className="flex flex-wrap gap-1" role="group" aria-label={`Actions for ${row.name}`}>
                                   <Button
                                     variant="outline"
                                     size="sm"

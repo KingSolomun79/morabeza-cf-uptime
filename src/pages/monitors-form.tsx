@@ -92,7 +92,10 @@ export function MonitorForm({ clients, mode, monitor, submitLabel, onSubmit, onC
         setServerError(cause);
         setErrors(serverFieldErrors(cause));
       } else {
-        throw cause;
+        // Unexpected (non-API) failure — show it instead of dying silently.
+        setServerError(
+          new UptimeApiError("internal", cause instanceof Error ? cause.message : "unexpected submit failure"),
+        );
       }
     } finally {
       setSubmitting(false);
@@ -167,7 +170,12 @@ export function MonitorForm({ clients, mode, monitor, submitLabel, onSubmit, onC
             id="monitor-method"
             className={`h-9 ${inputClass} rounded-md border border-input bg-transparent px-2 text-sm`}
             value={values.method}
-            onChange={(event) => set("method", event.target.value)}
+            onChange={(event) => {
+              set("method", event.target.value);
+              // A body is meaningless (and rejected) for GET/HEAD — dropping
+              // it here keeps the error off a field that is about to unmount.
+              if (event.target.value !== "POST") set("requestBody", "");
+            }}
           >
             <option value="GET">GET</option>
             <option value="HEAD">HEAD</option>

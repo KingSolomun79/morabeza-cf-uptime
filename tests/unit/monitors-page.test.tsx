@@ -162,6 +162,35 @@ describe("MonitorsPage list (PRD §27.4)", () => {
     renderPage();
     expect(await screen.findByText("No monitors yet")).toBeInTheDocument();
   });
+
+  it("resets a stale archived status filter when the include-archived toggle goes off (review I2)", async () => {
+    mockApi([
+      ({ method, url }) => {
+        if (method === "GET" && url.startsWith("/api/monitors")) {
+          const includeArchived = url.endsWith("includeArchived=true");
+          return envelope(
+            includeArchived
+              ? [...FIXTURE_MONITORS, monitor({ id: "mon_9", name: "Old Row", archivedAt: "2026-09-05T00:00:00.000Z", enabled: false })]
+              : FIXTURE_MONITORS,
+          );
+        }
+        return null;
+      },
+      ({ method, url }) => (method === "GET" && url === "/api/clients" ? envelope(FIXTURE_CLIENTS) : null),
+    ]);
+    renderPage();
+    await screen.findByText("Alpha Site");
+
+    fireEvent.click(screen.getByLabelText("Include archived"));
+    await screen.findByText("Old Row");
+    fireEvent.change(screen.getByLabelText("Filter by status"), { target: { value: "archived" } });
+    expect(screen.queryByText("Alpha Site")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Include archived"));
+    // With the stale filter the table would claim "No monitors match" while
+    // the select shows no visible selection.
+    expect(await screen.findByText("Alpha Site")).toBeInTheDocument();
+  });
 });
 
 describe("MonitorsPage actions", () => {
@@ -285,6 +314,31 @@ describe("MonitorsPage form (PRD §22 + §10.1)", () => {
     expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
   });
 
+  it("flags a header row that has a value but no name (review C1: never a silent dead submit)", async () => {
+    const calls = standardApi([]);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "New monitor" }));
+
+    fireEvent.change(screen.getByLabelText("Client"), { target: { value: "cli_a" } });
+    fireEvent.change(screen.getByLabelText(/^Name$/), { target: { value: "Alpha Copy" } });
+    fireEvent.change(screen.getByLabelText(/^URL/), { target: { value: "https://alpha.example.com/health" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add header" }));
+    fireEvent.change(screen.getByLabelText("Header value"), { target: { value: "nameless" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create monitor" }));
+
+    expect(await screen.findByText(/every header needs a name/)).toBeInTheDocument();
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
+  });
+
+  it("clears a typed request body when the method switches away from POST (review C2)", async () => {
+    await openCreateForm();
+    fireEvent.change(screen.getByLabelText("Method"), { target: { value: "POST" } });
+    fireEvent.change(screen.getByLabelText("Request body (POST only)"), { target: { value: "ping=1" } });
+    fireEvent.change(screen.getByLabelText("Method"), { target: { value: "GET" } });
+    fireEvent.change(screen.getByLabelText("Method"), { target: { value: "POST" } });
+    expect(screen.getByLabelText("Request body (POST only)")).toHaveValue("");
+  });
+
   it("creates a monitor end-to-end and surfaces the duplicate-probability warning sibling", async () => {
     const calls = standardApi([
       ({ method }) =>
@@ -317,6 +371,20 @@ describe("MonitorsPage form (PRD §22 + §10.1)", () => {
     expect(name).toHaveValue("Alpha Site (copy)");
     expect(screen.getByLabelText(/^URL/)).toHaveValue("https://alpha.example.com/health");
     expect(screen.getByLabelText("Interval")).toHaveValue("300");
+  });
+
+  it("duplicate submits a CREATE (POST), never a PATCH of the source monitor (review I1)", async () => {
+    const calls = standardApi([
+      ({ method }) => (method === "POST" ? envelope(monitor({ name: "Alpha Site (copy)" }), {}, 201) : null),
+    ]);
+    renderPage();
+    const row = within(await screen.findByRole("table")).getByRole("row", { name: /Alpha Site/ });
+    fireEvent.click(within(row).getByRole("button", { name: "Duplicate" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create monitor" }));
+    await waitFor(() => expect(calls.filter((call) => call.method === "POST")).toHaveLength(1));
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
+    expect(calls.find((call) => call.method === "POST")?.body).toMatchObject({ name: "Alpha Site (copy)" });
   });
 
   it("edit prefills the form and PATCHes the full config on save", async () => {
