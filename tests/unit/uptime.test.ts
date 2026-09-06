@@ -219,6 +219,9 @@ describe("uptime source strategy (raw ↔ rollup blend)", () => {
       await seedHourly("mon_blend", hour, 2, 1);
     }
     await seedHourly("mon_blend", "2026-08-29T23:00:00.000Z", 4, 4);
+    // The 30d window's first (partial) hour participates WHOLE: the window
+    // starts at :07 but its hour row (00:00) is included.
+    await seedHourly("mon_blend", "2026-08-07T00:00:00.000Z", 6, 6);
     // Boundary guards: must ALL be ignored.
     await seedHourly("mon_blend", SWITCHOVER_7D, 9999, 9999); // hour AT switchover → raw territory
     await seedHourly("mon_blend", "2026-08-06T23:00:00.000Z", 8888, 8888); // before the 30d window
@@ -227,12 +230,12 @@ describe("uptime source strategy (raw ↔ rollup blend)", () => {
     expect(result).toMatchObject({
       status: "ok",
       source: "blended",
-      eligibleChecks: 3 + 10 + 4, // raw + rollup hours + the 23:00 hour
-      healthyChecks: 2 + 5 + 4,
-      percentage: Math.round(((2 + 5 + 4) / (3 + 10 + 4)) * 100 * 100) / 100, // 64.71
+      eligibleChecks: 3 + 10 + 4 + 6, // raw + rollup hours + 23:00 hour + first partial hour
+      healthyChecks: 2 + 5 + 4 + 6,
+      percentage: Math.round(((2 + 5 + 4 + 6) / (3 + 10 + 4 + 6)) * 100 * 100) / 100,
     });
     // The guards would blow these numbers up if the boundary leaked.
-    expect(result.eligibleChecks).toBe(17);
+    expect(result.eligibleChecks).toBe(23);
   });
 
   it("never double-counts a check on either side of the switchover", async () => {
@@ -355,5 +358,13 @@ describe("GET /api/monitors/:id/uptime (PRD §24)", () => {
     const body = (await response.json()) as { error: { category: string; details: Array<{ path: string }> } };
     expect(body.error.category).toBe("validation");
     expect(body.error.details?.[0]?.path).toBe("window");
+  });
+
+  it("accepts the 90d window literal end-to-end", async () => {
+    const response = await get("/api/monitors/mon_rt/uptime?window=90d");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { data: { window: string; source: string } };
+    expect(body.data.window).toBe("90d");
+    expect(body.data.source).toBe("blended"); // 90d > 7d raw retention
   });
 });

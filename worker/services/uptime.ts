@@ -15,6 +15,11 @@
  *   case for 30d/90d under §18's 7d raw default).
  * The switchover derives from RAW_CHECK_RETENTION_DAYS (#19 var) via the
  * shared `parseRetentionDays` so retention and uptime can never disagree.
+ * ASSUMPTION (documented for #22/#24): HOURLY_RETENTION_DAYS (§18 default
+ * 90d) covers every window's rollup span — an operator who shrinks it below
+ * that silently narrows the rollup coverage of 30d/90d windows. Falling back
+ * to daily_rollups for hours beyond hourly retention is a deliberate
+ * non-feature here; revisit before shrinking those vars in production.
  *
  * Blend boundary alignment: rollup hours participate WHOLE. The raw/rollup
  * switchover is aligned DOWN to the hour — rollups own every hour strictly
@@ -151,7 +156,10 @@ export async function computeUptime(
   // Rollup hours participate WHOLE: the switchover is aligned down to the
   // hour (rollups own hours strictly before it — no overlap with the raw
   // span) and the window's first hour is included even when the window starts
-  // mid-hour, so a boundary hour's checks are never dropped.
+  // mid-hour, so a boundary hour's checks are never dropped. Structurally
+  // switchover >= windowStartHour always holds (integer-day retention vs
+  // day-multiple windows, both floored to the hour), so the raw slice can
+  // never reach below the window.
   const switchoverMs = Math.floor(rawCutoffMs / HOUR_MS) * HOUR_MS;
   const windowStartHourMs = Math.floor(windowStartMs / HOUR_MS) * HOUR_MS;
   const switchover = new Date(switchoverMs).toISOString();

@@ -141,7 +141,8 @@ export async function runRetentionCleanup(
   db: AppDatabase,
   windows: RetentionWindows,
   opts: { now?: string; batchSize?: number } = {},
-): Promise<RetentionSummary> {  const ranAt = opts.now ?? nowIso();
+): Promise<RetentionSummary> {
+  const ranAt = opts.now ?? nowIso();
   const batchSize = opts.batchSize ?? RETENTION_BATCH_SIZE;
   const cutoff = (days: number) => new Date(Date.parse(ranAt) - days * DAY_MS).toISOString();
 
