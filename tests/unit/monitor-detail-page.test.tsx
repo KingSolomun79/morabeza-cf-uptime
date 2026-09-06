@@ -16,7 +16,7 @@ import { MonitorDetailPage } from "../../src/pages/monitor-detail-page";
 import type { MonitorDto } from "../../src/types/monitor";
 import type { CheckDto, MaintenanceWindowDto, MonitorIncidentDto, NotificationTargetDto, UptimeDto } from "../../src/types/monitor-detail";
 
-function monitorFixture(): MonitorDto {
+function monitorFixture(patch: Partial<MonitorDto> = {}): MonitorDto {
   return {
     id: "mon_1",
     clientId: "cli_1",
@@ -41,6 +41,7 @@ function monitorFixture(): MonitorDto {
     updatedAt: "2026-09-01T00:00:00.000Z",
     archivedAt: null,
     state: { status: "up", lastCheckedAt: new Date(Date.now() - 5 * 60_000).toISOString(), lastStatusCode: 200, lastResponseTimeMs: 120, lastReasonCode: null },
+    ...patch,
   };
 }
 
@@ -48,8 +49,9 @@ const TOTAL_CHECKS = 30;
 
 function checkFixture(index: number): CheckDto {
   const completedAt = new Date(Date.now() - (TOTAL_CHECKS - index) * 5 * 60_000).toISOString();
-  // The 10th and 11th checks (20 min window) sit inside the maintenance fixture.
-  const maintenance = index === 10 || index === 11;
+  // Checks 16–21 complete 70–45 min ago — inside mw_active ([70m, 40m) ago,
+  // half-open), so the table's Excluded flags and the chart overlay agree.
+  const maintenance = index >= 16 && index <= 21;
   return {
     id: `chk_${index}`,
     monitorId: "mon_1",
@@ -154,12 +156,12 @@ function envelope(data: unknown, extra: Record<string, unknown> = {}, status = 2
   });
 }
 
-function detailApi(extraHandlers: ApiHandler[] = []) {
+function detailApi(extraHandlers: ApiHandler[] = [], monitor: MonitorDto = monitorFixture()) {
   const calls: Array<{ method: string; url: string; body: unknown }> = [];
   // The mapping set is stateful so invalidation-refetches reflect PUTs.
   let mappings: string[] = ["tgt_1"];
   const base: ApiHandler[] = [
-    ({ method, url }) => (method === "GET" && url === "/api/monitors/mon_1" ? envelope(monitorFixture()) : null),
+    ({ method, url }) => (method === "GET" && url === "/api/monitors/mon_1" ? envelope(monitor) : null),
     ({ method, url }) => {
       const match = method === "GET" && url.startsWith("/api/monitors/mon_1/uptime?window=");
       if (!match) return null;
@@ -169,9 +171,11 @@ function detailApi(extraHandlers: ApiHandler[] = []) {
     ({ method, url }) => {
       const match = method === "GET" && url.startsWith("/api/monitors/mon_1/checks?");
       if (!match) return null;
-      const offset = Number(new URLSearchParams(url.split("?")[1]).get("offset") ?? 0);
-      const items = Array.from({ length: TOTAL_CHECKS }, (_, i) => checkFixture(i)).slice(offset, offset + 25);
-      return envelope(items, { pagination: { total: TOTAL_CHECKS, limit: 25, offset } });
+      const params = new URLSearchParams(url.split("?")[1]);
+      const offset = Number(params.get("offset") ?? 0);
+      const limit = Number(params.get("limit") ?? 50);
+      const items = Array.from({ length: TOTAL_CHECKS }, (_, i) => checkFixture(i)).slice(offset, offset + limit);
+      return envelope(items, { pagination: { total: TOTAL_CHECKS, limit, offset } });
     },
     ({ method, url }) =>
       method === "GET" && url === "/api/monitors/mon_1/incidents?limit=50"
@@ -249,7 +253,7 @@ describe("MonitorDetailPage (PRD §27.5)", () => {
       expect(within(table).getByRole("columnheader", { name: header })).toBeInTheDocument();
     }
     expect(within(table).getByText("MANUAL")).toBeInTheDocument();
-    expect(within(table).getAllByText("Excluded")).toHaveLength(2);
+    expect(within(table).getAllByText("Excluded")).toHaveLength(6);
     expect(within(table).getByText("FAIL")).toBeInTheDocument();
     expect(within(table).getByText("unexpected_status")).toBeInTheDocument();
 
@@ -313,6 +317,25 @@ describe("MonitorDetailPage (PRD §27.5)", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Run check now" }));
     await waitFor(() => expect(calls.find((call) => call.method === "POST" && call.url.endsWith("/check"))).toBeTruthy());
     expect(await screen.findByText(/Manual check queued/)).toBeInTheDocument();
+  });
+
+  it("disables run-now for a paused monitor — the API would 409 (review)", async () => {
+    detailApi([], monitorFixture({ enabled: false, state: { status: "paused", lastCheckedAt: null, lastStatusCode: null, lastResponseTimeMs: null, lastReasonCode: null } }));
+    renderDetail();
+
+    expect(await screen.findByText("PAUSED")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run check now" })).toBeDisabled();
+  });
+
+  it("unchecking a target PUTs the mapping set without it (review)", async () => {
+    const calls = detailApi();
+    renderDetail();
+
+    const ops = await screen.findByLabelText(/Ops/);
+    expect(ops).toBeChecked();
+    fireEvent.click(ops);
+    await waitFor(() => expect(calls.find((call) => call.method === "PUT")?.body).toEqual({ targetIds: [] }));
+    await waitFor(() => expect(ops).not.toBeChecked(), { timeout: 3000 });
   });
 
   it("renders a not-found card for an unknown monitor (deep-link safety)", async () => {

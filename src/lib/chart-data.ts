@@ -30,6 +30,46 @@ export interface MaintenanceOverlay {
   endsAt: string;
 }
 
+/**
+ * Turns time-range overlays into category-axis regions. Maintenance checks
+ * carry no response time, so a window often has NO plotted points inside it —
+ * the region is therefore bracketed by the plotted points surrounding it
+ * (last point at/before start → first point at/after end), which renders
+ * correctly even when every check in the window was excluded.
+ */
+export interface ChartOverlayRegion {
+  id: string;
+  title: string;
+  x1: string;
+  x2: string;
+}
+
+export function overlayRegionsForPoints(overlays: MaintenanceOverlay[], points: ResponseTimePoint[]): ChartOverlayRegion[] {
+  if (points.length === 0) return [];
+  const regions: ChartOverlayRegion[] = [];
+  for (const overlay of overlays) {
+    // x1: the last plotted point at/before the window start (0 when the
+    // window starts before every point).
+    let x1Index = 0;
+    for (let i = 0; i < points.length; i++) {
+      if (points[i].at <= overlay.startsAt) x1Index = i;
+    }
+    // x2: the first plotted point at/after the window end (the last point
+    // when the window ends beyond every point).
+    let x2Index = points.length - 1;
+    for (let i = 0; i < points.length; i++) {
+      if (points[i].at >= overlay.endsAt) {
+        x2Index = i;
+        break;
+      }
+    }
+    // Safety net for a window bracketed by a single point — widen right.
+    if (x2Index <= x1Index) x2Index = Math.min(x1Index + 1, points.length - 1);
+    regions.push({ id: overlay.id, title: overlay.title, x1: points[x1Index].label, x2: points[x2Index].label });
+  }
+  return regions;
+}
+
 function windowAppliesToMonitor(window: MaintenanceWindowDto, monitor: { id: string; clientId: string }): boolean {
   if (window.cancelledAt !== null) return false;
   if (window.scopeType === "global") return true;

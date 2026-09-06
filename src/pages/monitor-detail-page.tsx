@@ -29,7 +29,7 @@ import {
 } from "recharts";
 import { apiMutate, apiRequest, apiRequestEnvelope, UptimeApiError } from "../lib/api";
 import { formatRelative, formatTimestamp } from "../lib/time-format";
-import { checksToChartPoints, maintenanceOverlaysForChart } from "../lib/chart-data";
+import { checksToChartPoints, maintenanceOverlaysForChart, overlayRegionsForPoints } from "../lib/chart-data";
 import type { ClientDto, ManualCheckReceipt, MonitorDto } from "../types/monitor";
 import type {
   CheckDto,
@@ -106,12 +106,15 @@ function ResponseTimeChart({
     () => (range ? maintenanceOverlaysForChart(maintenanceWindows, monitor, range) : []),
     [maintenanceWindows, monitor, range],
   );
+  // Regions are bracketed by surrounding plotted points: maintenance checks
+  // have no response time, so windows often contain no plotted points.
+  const regions = useMemo(() => overlayRegionsForPoints(overlays, points), [overlays, points]);
 
   if (points.length < 2) {
     return <p className="text-sm text-muted-foreground">Not enough response-time data yet.</p>;
   }
 
-  const maxMs = Math.max(...points.map((point) => point.ms));
+  const maxMs = Math.max(...points.map((point) => point.ms), 1);
   return (
     <div className="space-y-2">
       <div className="overflow-x-auto">
@@ -120,22 +123,19 @@ function ResponseTimeChart({
           <XAxis dataKey="label" interval="preserveStartEnd" tick={{ fontSize: 11 }} />
           <YAxis domain={[0, Math.ceil(maxMs * 1.1)]} tick={{ fontSize: 11 }} width={48} unit=" ms" />
           <Tooltip />
-          {overlays.map((overlay) => {
-            const inside = points.filter((point) => point.at >= overlay.startsAt && point.at < overlay.endsAt);
-            if (inside.length === 0) return null;
-            return (
-              <ReferenceArea
-                key={overlay.id}
-                x1={inside[0].label}
-                x2={inside[inside.length - 1].label}
-                fill="currentColor"
-                fillOpacity={0.15}
-                stroke="currentColor"
-                strokeDasharray="4 2"
-                label={{ value: `Maintenance: ${overlay.title}`, position: "insideTop", fontSize: 11 }}
-              />
-            );
-          })}
+          {regions.map((region) => (
+            <ReferenceArea
+              key={region.id}
+              x1={region.x1}
+              x2={region.x2}
+              ifOverflow="extendDomain"
+              fill="currentColor"
+              fillOpacity={0.15}
+              stroke="currentColor"
+              strokeDasharray="4 2"
+              label={{ value: `Maintenance: ${region.title}`, position: "insideTop", fontSize: 11 }}
+            />
+          ))}
           <Line
             type="monotone"
             dataKey="ms"
@@ -289,6 +289,13 @@ export function MonitorDetailPage() {
       apiRequestEnvelope<CheckDto[]>(
         `/api/monitors/${monitorId}/checks?limit=${CHECKS_PAGE_SIZE}&offset=${(checksPage - 1) * CHECKS_PAGE_SIZE}`,
       ),
+    enabled: !!monitor,
+  });
+  // The chart always plots the newest window of checks, independent of the
+  // table's pagination state.
+  const chartChecksQuery = useQuery({
+    queryKey: ["monitor-checks", monitorId, "chart"],
+    queryFn: () => apiRequestEnvelope<CheckDto[]>(`/api/monitors/${monitorId}/checks?limit=200&offset=0`),
     enabled: !!monitor,
   });
   const incidentsQuery = useQuery({
@@ -502,9 +509,9 @@ export function MonitorDetailPage() {
           <CardTitle>Response time</CardTitle>
         </CardHeader>
         <CardContent>
-          {checksQuery.isSuccess ? (
+          {chartChecksQuery.isSuccess ? (
             <ResponseTimeChart
-              checks={checksQuery.data.data}
+              checks={chartChecksQuery.data.data}
               maintenanceWindows={maintenanceQuery.data ?? []}
               monitor={monitor}
             />
@@ -577,11 +584,16 @@ export function MonitorDetailPage() {
                         </td>
                       </tr>
                     ))}
-                    {checksQuery.data.data.length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="py-4 text-center text-muted-foreground">No checks recorded yet.</td>
-                      </tr>
-                    )}
+                    {checksQuery.data.data.length === 0 &&
+                      ((checksQuery.data.pagination?.total ?? 0) === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-4 text-center text-muted-foreground">No checks recorded yet.</td>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="py-4 text-center text-muted-foreground">No checks on this page — go back a page.</td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>

@@ -4,7 +4,7 @@
  * rules. Pure functions, node environment.
  */
 import { describe, expect, it } from "vitest";
-import { checksToChartPoints, maintenanceOverlaysForChart } from "../../src/lib/chart-data";
+import { checksToChartPoints, maintenanceOverlaysForChart, overlayRegionsForPoints } from "../../src/lib/chart-data";
 import type { CheckDto, MaintenanceWindowDto } from "../../src/types/monitor-detail";
 
 function check(completedAt: string, responseTimeMs: number | null): CheckDto {
@@ -114,5 +114,48 @@ describe("maintenanceOverlaysForChart (§14.2 scope + [start,end) overlap)", () 
       range,
     );
     expect(overlays.map((overlay) => overlay.id)).toEqual(["mw_early", "mw_late"]);
+  });
+});
+
+describe("overlayRegionsForPoints (category-axis bracketing)", () => {
+  const points = checksToChartPoints(
+    [
+      check("2026-09-05T10:00:00.000Z", 100),
+      check("2026-09-05T10:05:00.000Z", 110),
+      check("2026-09-05T10:10:00.000Z", 120),
+      check("2026-09-05T10:15:00.000Z", 130),
+    ],
+    (iso) => iso,
+  );
+
+  it("brackets a window that contains NO plotted points (all its checks were excluded)", () => {
+    // The gap between 10:05 and 10:10 holds zero plotted points.
+    const regions = overlayRegionsForPoints(
+      [{ id: "mw_gap", title: "Deploy", startsAt: "2026-09-05T10:05:10.000Z", endsAt: "2026-09-05T10:09:50.000Z" }],
+      points,
+    );
+    expect(regions).toEqual([{ id: "mw_gap", title: "Deploy", x1: "2026-09-05T10:05:00.000Z", x2: "2026-09-05T10:10:00.000Z" }]);
+  });
+
+  it("uses surrounding points for a window with plotted points inside", () => {
+    const regions = overlayRegionsForPoints(
+      [{ id: "mw_mid", title: "Deploy", startsAt: "2026-09-05T10:04:00.000Z", endsAt: "2026-09-05T10:06:00.000Z" }],
+      points,
+    );
+    expect(regions[0].x1).toBe("2026-09-05T10:00:00.000Z");
+    expect(regions[0].x2).toBe("2026-09-05T10:10:00.000Z");
+  });
+
+  it("clamps windows that extend beyond the plotted range", () => {
+    const regions = overlayRegionsForPoints(
+      [{ id: "mw_wide", title: "Deploy", startsAt: "2026-09-05T09:00:00.000Z", endsAt: "2026-09-05T12:00:00.000Z" }],
+      points,
+    );
+    expect(regions[0].x1).toBe(points[0].label);
+    expect(regions[0].x2).toBe(points[points.length - 1].label);
+  });
+
+  it("yields no regions without points", () => {
+    expect(overlayRegionsForPoints([{ id: "mw", title: "t", startsAt: "2026-09-05T10:00:00.000Z", endsAt: "2026-09-05T11:00:00.000Z" }], [])).toEqual([]);
   });
 });
