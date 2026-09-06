@@ -8,9 +8,8 @@
  * Heartbeat: `last_queue_consumer_at` is refreshed once per batch of real
  * work and powers /healthz degradation checks (#11, PRD §19).
  *
- * Handlers yet to land (#19 retention cleanup) are registered as explicit
- * not-implemented stubs: they fail loudly and land in the DLQ rather than
- * being silently dropped.
+ * With #19, every V1 message type has a real handler — the not-implemented
+ * stub pattern is retired (the DLQ only sees genuine failures now).
  */
 import { logEvent } from "../lib/logging";
 import { touchQueueConsumerHeartbeat } from "../repositories/system";
@@ -18,6 +17,7 @@ import { parseEnvelope, type Envelope, type MessageType, type PayloadOf } from "
 import { createMonitorCheckHandler, type MonitorCheckDeps } from "./handlers/monitor-check";
 import { createNotificationSendHandler, type NotificationSendDeps } from "./handlers/notification-send";
 import { createDailyRollupHandler, createHourlyRollupHandler } from "./handlers/rollups";
+import { createRetentionCleanupHandler } from "./handlers/retention-cleanup";
 import type { Env } from "../env";
 
 export interface JobContext {
@@ -49,16 +49,8 @@ export interface BatchLike {
 
 const RETRY_DELAY_SECONDS = 5;
 
-function notImplemented(type: MessageType): JobHandler<MessageType> {
-  return async () => {
-    throw new Error(`queue handler for ${type} is not implemented yet`);
-  };
-}
-
 /**
- * The full V1 handler registry. Implemented handlers grow slice by slice:
- * #9 (monitor.check), #17 (notification.send) and #18 (rollups) are live;
- * #19 (retention) stays a fail-loud stub until it lands.
+ * The full V1 handler registry — all six message types live as of #19.
  */
 export function defaultRegistry(
   checkerDeps: MonitorCheckDeps = {},
@@ -74,7 +66,7 @@ export function defaultRegistry(
     },
     "rollup.hourly": createHourlyRollupHandler(),
     "rollup.daily": createDailyRollupHandler(),
-    "retention.cleanup": notImplemented("retention.cleanup"),
+    "retention.cleanup": createRetentionCleanupHandler(),
   };
 }
 

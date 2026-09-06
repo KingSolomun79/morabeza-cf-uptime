@@ -22,6 +22,17 @@ export interface Env {
   DEFAULT_FROM_EMAIL?: string;
 
   /**
+   * Retention windows in days (issue #19; PRD §18) — non-secret wrangler
+   * `vars` (strings, as wrangler delivers them). §18 defaults when absent:
+   * raw checks 7d, hourly rollups 90d, daily rollups 730d; scheduler_runs is
+   * fixed at 7d and not configurable. A present-but-invalid value fails loud
+   * in the retention handler (retry → DLQ), never silently misprunes.
+   */
+  RAW_CHECK_RETENTION_DAYS?: string;
+  HOURLY_RETENTION_DAYS?: string;
+  DAILY_RETENTION_DAYS?: string;
+
+  /**
    * Public origin of this app; mutating /api requests must send a matching
    * Origin header (PRD §8.4). Local dev: e.g. http://localhost:5173
    */
