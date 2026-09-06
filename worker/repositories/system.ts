@@ -61,6 +61,19 @@ export async function touchDailyRollupHeartbeat(env: Env, at: string = nowIso())
     });
 }
 
+/** Set by the retention.cleanup handler on success (issue #19, PRD §18). */
+export async function touchCleanupHeartbeat(env: Env, at: string = nowIso()): Promise<void> {
+  const db = getDb(env);
+  const now = nowIso();
+  await db
+    .insert(systemState)
+    .values({ id: SYSTEM_STATE_ID, lastCleanupAt: at, updatedAt: now })
+    .onConflictDoUpdate({
+      target: systemState.id,
+      set: { lastCleanupAt: at, updatedAt: now },
+    });
+}
+
 export async function getSystemState(env: Env): Promise<typeof systemState.$inferSelect | null> {
   const db = getDb(env);
   const [row] = await db.select().from(systemState).where(eq(systemState.id, SYSTEM_STATE_ID));

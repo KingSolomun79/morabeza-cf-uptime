@@ -152,20 +152,22 @@ describe("consumer batch semantics (PRD §37.9)", () => {
     expect(new Date(state?.lastQueueConsumerAt as string).getTime()).toBeGreaterThan(Date.now() - 60_000);
   });
 
-  it("default registry fails loudly for not-yet-implemented job types", async () => {
+  it("default registry completes every V1 message type (no stubs remain after #19)", async () => {
     const { env } = testDb;
     const consumer = createQueueConsumer();
 
-    // Only retention.cleanup remains a stub after #18 (rollups are live).
-    const future = fakeMessage({
+    // retention.cleanup was the last fail-loud stub (#19): it now acks
+    // (deleting nothing on an empty database is a successful no-op).
+    const cleanup = fakeMessage({
       v: 1,
       type: "retention.cleanup",
       jobId: "retention.cleanup:2026-09-05T00:00:00.000Z",
       payload: {},
     });
 
-    await consumer(fakeBatch(QUEUE_NAMES.checks, [future]), env);
-    expect(future.retry).toHaveBeenCalledTimes(1); // → DLQ after max_retries
+    await consumer(fakeBatch(QUEUE_NAMES.checks, [cleanup]), env);
+    expect(cleanup.ack).toHaveBeenCalledTimes(1);
+    expect(cleanup.retry).not.toHaveBeenCalled();
   });
 });
 

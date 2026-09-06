@@ -24,6 +24,13 @@
       "name": "EMAIL"
     }
   ],
+  // Non-secret vars (issue #19; PRD §18 + §31 deploy example). Retention
+  // windows in days; §18 defaults are raw 7d / hourly 90d / daily 730d.
+  "vars": {
+    "RAW_CHECK_RETENTION_DAYS": "7",
+    "HOURLY_RETENTION_DAYS": "90",
+    "DAILY_RETENTION_DAYS": "730"
+  },
   "queues": {
     "producers": [
       {
