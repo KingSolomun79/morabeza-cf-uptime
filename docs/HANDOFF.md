@@ -1,6 +1,6 @@
 # Handoff — Morabeza CF Uptime
 
-**Date:** 2026-09-06 · **State:** main green, 436/436 tests, CI passing · **Author:** agent session (UI era **#21→#27 COMPLETE**; next #28, then HITL #29–#31)
+**Date:** 2026-09-06 · **State:** main green, 454/454 tests, CI passing · **Author:** agent session (**autonomous chain #1–#28 COMPLETE**; next: HITL #29–#31 — owner only)
 
 ---
 
@@ -26,7 +26,9 @@ Build a Cloudflare-uptime monitor (single Worker + D1 + Queues + Email) from `do
 
 **UI era COMPLETE (#21–#27, every §27.2 nav section is a real page):** **#21** (foundation) → **#22** (Overview + GET /api/dashboard) → **#23** (Monitors CRUD UI; validation REUSES worker zod schemas) → **#24** (monitor detail: uptime windows, Recharts chart + labeled maintenance overlays, checks history via NEW GET /api/monitors/:id/checks + /:id/incidents) → **#25** (clients list/detail, incidents list/detail with check timeline, maintenance CRUD with Cape_Verde wall-time inputs; zero new API surface) → **#26** (notifications page + system page; NEW GET /api/system, dead-letter list + resolve-with-notes, GET /api/notification-events; heartbeat freshness law EXTRACTED to worker/lib/heartbeat.ts, shared with #11's healthz; APP_VERSION wrangler var) → **#27** (bulk import POST /api/monitors/import + export GET /api/monitors/export; Import/Export page; commit policy: validate whole file → create valid, skip duplicates flagged-not-duplicated → idempotent round-trip; MAX_IMPORT_ROWS=100 chosen against the D1 per-request query budget; the placeholder-page component is DELETED).
 
-**Open, in dependency order:** **#28 (production deploy workflow + final wrangler.jsonc + smoke script, afk)** → **#29–#31 (HITL — require the human OWNER; do not start autonomously)**: provisioning + first deploy + smoke gate (#29), initial monitor rollout (#30), external Upptime watchdog (#31).
+**#28 COMPLETE (production deploy readiness, PR #60):** final `wrangler.jsonc` per §31 (workers_dev/preview_urls off, production vars incl. APP_ACCESS_MODE=access, traces 5% head sampling; `database_id` stays a documented owner placeholder — remote ops fail loudly until #29 fills it) · security headers per §29.11–14 with TWO delivery paths (worker middleware for /api+/healthz+404s, `public/_headers` for static assets — tests pin both byte-identically) · `.github/workflows/deploy-production.yml` (dispatch-only, `production` environment approval gate + main-only backstop; CI-green SHA gate → remote D1 migrations → deploy with APP_VERSION stamped → smoke) · `scripts/smoke.mjs` (automatable §32.3 subset + 12 enumerated manual items) · `docs/RUNBOOK.md` (the §35 owner checklist + §7.2 sequence — the manual companion #29 executes).
+
+**Open, in dependency order:** **#29–#31 are `hitl` issues — they REQUIRE the human OWNER. Do not start autonomously.** #29 provisioning + first deploy + smoke gate (companion: docs/RUNBOOK.md) → #30 initial monitor rollout → #31 external Upptime watchdog. Full specs live in `gh issue view NNN`.
 
 ### Architecture as-built (map)
 
@@ -39,7 +41,8 @@ worker/
                       APP_ACCESS_MODE (+#17)
   lib/                db(drizzle), errors(ApiError), ids(newId), time(nowIso),
                       logging(logEvent), validation(zod body+query), url-safety,
-                      monitor-schema, maintenance-schema
+                      monitor-schema, maintenance-schema,
+                      security-headers(#28: §29.11–14 CSP/nosniff/referrer)
   repositories/       clients, monitors(disable closes incidents closed_admin), notifications
                       (targets+resolveTargets), system(heartbeats), audit(recordAudit),
                       monitor-state(CAS), maintenance(windows+findActiveMaintenanceWindow)
@@ -108,21 +111,34 @@ tests/unit/*          real D1 via miniflare (tests/helpers/d1.ts — includes a 
 
 ---
 
-## 4. Remaining work — #28 (afk), then STOP for HITL (#29–#31)
+## 3c. Deploy-era contracts & gotchas (#28, read before any deploy/infra work)
 
-**#28 is the last autonomous issue** (production deploy workflow + final wrangler.jsonc + smoke-test script). **#29–#31 are `hitl` issues — they need the human owner. Do not start them autonomously; when the chain reaches them, stop and report.** Full specs live in `gh issue view NNN` — do not create new GitHub issues; these exist.
+1. **Security headers are ONE policy, TWO delivery paths:** static assets (SPA shell, hashed bundles) NEVER run Worker code (`run_worker_first: ["/api/*", "/healthz"]`), so they get §29.11–14 headers from `public/_headers`; every Worker-generated response gets them from `worker/lib/security-headers.ts` (middleware registered FIRST in app.ts, sets headers after `next()`). `tests/unit/security-headers.test.ts` pins both sources byte-identically and asserts EXACT statuses on `/healthz` (503) / `/nope` (404) / `/api/monitors` (401) — a drifted route must fail, not satisfy a `>= 400`. CSP is self-only (`script-src 'self'`, no inline exists in the built bundle) + `frame-ancestors 'none'` per §29.14 — extend it if the bundle ever gains inline scripts/external origins.
+2. **Local dev REQUIRES `.dev.vars` now:** `wrangler.jsonc` ships production values (`APP_ACCESS_MODE=access`, prod `APP_ORIGIN`). Without a `.dev.vars` (copy from `.dev.vars.example`), local API calls fail CLOSED ("Access is not configured") — safe, but confusing if you don't know why.
+3. **Deploy = `pnpm build` → `pnpm wrangler deploy`:** wrangler auto-uses the Vite output config (`dist/morabeza_cf_uptime/wrangler.json`, which inherits the repo config and injects `assets.directory`). Config validation WITHOUT credentials: `pnpm deploy:dry-run` — passes with the placeholder D1 id; remote migrations/deploy will fail loudly until #29 fills it (deliberate). `wrangler d1 migrations apply --remote` auto-skips its confirmation in CI.
+4. **Deploy workflow mechanics:** dispatch-only + `production` environment approval + job-level `if: github.ref == 'refs/heads/main'` backstop (the env gate only enforces after the owner creates protection rules). CI-green gate queries check-runs on the exact SHA (waits up to 10 min, aborts on any failure or zero runs). Migrations run BEFORE deploy. **GITHUB_ENV gotcha (review-caught):** variables written to GITHUB_ENV only reach SUBSEQUENT steps — computing APP_VERSION and reading it in the same step deployed `APP_VERSION:""` silently; use a shell var.
+5. **Smoke (`scripts/smoke.mjs`, `pnpm smoke <url>`):** automatable §32.3 subset = #1 healthz 200 + EXACT `{"status":"ok"}` (degraded 503 FAILS the gate), #2 anonymous `/` blocked (3xx/401/403), #4 anonymous `/api/monitors` blocked (404 = failure too), + §29 headers on /healthz. Read-only GETs, `redirect: "manual"`. Exit 1 on any automated failure — the deploy job inherits it. The 12 manual items print with how-to steps; production "ready" requires walking them (first deploy: all; routine: proportionate — see RUNBOOK §3).
+6. **Smoke headers check reads live responses, tests read source:** `missingSecurityHeaders` checks the response Headers of /healthz; the byte-identical lockstep between `_headers` and the worker module is asserted by parsing the FILE via `import.meta.glob("../../public/_headers*", {query:"?raw"})` (vite import-glob needs a pattern, not a literal path).
+
+---
+
+## 4. Remaining work — NONE autonomously; hand #29–#31 to the OWNER (HITL)
+
+**The autonomous chain is complete (through #28).** Everything the agent could build, test, review, and document locally is on main. **#29–#31 are `hitl` issues — they need the human owner's Cloudflare account, credentials, and decisions. Do not start them autonomously; if asked, point at docs/RUNBOOK.md and stop.** Full specs live in `gh issue view NNN` — do not create new GitHub issues; these exist.
+
+What #29 (first) actually needs, in order (RUNBOOK §1 is the checklist):
+- Real Cloudflare resources (D1 `morabeza-cf-uptime-db` weur, queues `morabeza-cf-uptime-checks`/`-dlq`, Email Service onboarding, Access app on `uptime.morabeza.digital/*` with an exact `/healthz` bypass, custom hostname);
+- Fill `database_id` in `wrangler.jsonc` (replace `OWNER_TO_FILL_AFTER_CREATION`);
+- GitHub `production` environment: required reviewers + least-privilege secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`);
+- Then: Actions → Deploy production → approve → walk RUNBOOK §2 manual steps + §3 smoke (automated subset runs in the job).
 
 Cross-cutting notes only the current code knows:
 
-- **APIs the UI consumes are all live:** monitors CRUD + `POST /:id/check` (202) + `GET /:id/uptime?window=24h|7d|30d|90d`, incidents (open-first paginated + `/api/monitors/:id/incidents`), maintenance, notification targets + monitor mappings (`GET/PUT /api/monitors/:id/notification-targets`), clients, `GET /api/dashboard`, and `GET /api/monitors/:id/checks` (#24, paginated history).
-- **Pagination convention** (from `/api/incidents`): `{ data, pagination: { total, limit, offset } }` — checks/dead-letters reuse it; limit hard max is 200.
-- **Deep links already emitted in emails** (#17): `${APP_ORIGIN}/monitors/:id` and `${APP_ORIGIN}/incidents/:id` — both are REAL pages now; keep the shapes stable.
-- **Error envelopes** (§38): `{ error: { category, message, requestId, details } }` — build UI error handling around `category`, not messages; `details[]` maps to form fields.
-- **Auth in dev:** `APP_ACCESS_MODE=local` trusts `X-Dev-Access-Email`; production is Access JWT (`access` mode, fail-closed `locked` default). UI ships before provisioning (#29) — keep local mode working.
-- **`GET /:id/uptime` validation quirk:** invalid window on an unknown monitor returns 400 (validation runs before the 404) — deliberate, tested; don't "fix" asymmetry without a reason.
-- **System heartbeats for #26's system page:** `system_state` row has `last_scheduler_at`, `last_queue_consumer_at`, `last_hourly_rollup_at`, `last_daily_rollup_at`, `last_cleanup_at` (the last one is NOT yet surfaced in /healthz — candidate follow-up). Dead-letter rows come from `dead_letter_events` (DLQ consumer persists them). The #22 dashboard already carries the heartbeat chip (`{status, checks:{d1,scheduler,consumer}}`).
-- **APIs live as of the end of the UI era:** everything in §3b plus GET /api/system, GET+PATCH /api/dead-letters, GET /api/notification-events, POST /api/monitors/import, GET /api/monitors/export. Every §38 envelope convention holds.
-- **For #28:** wrangler.jsonc still has placeholders (real database_id + Access team domain/AUD land in provisioning #29 — check the file header note); APP_VERSION var exists and should be bumped/automated at deploy; `run_worker_first` + SPA fallback are already wired; APP_ACCESS_MODE must ship as `access` (fail-closed `locked` default remains safe). The external smoke gate depends on /healthz's strict two-field contract (§19).
-- **HITL gate:** #29 needs real Cloudflare credentials/decisions; #30 is the owner's rollout plan; #31 is an EXTERNAL repo watching /healthz. Autonomous work must not preempt owner choices.
+- **Deep links are frozen contracts:** `/monitors/:id` and `/incidents/:id` are embedded in #17 alert emails — route shapes must never change.
+- **API conventions that must survive any future change:** envelope `{ data }` / `{ error: { category, message, requestId, details } }` (§38); pagination `{ data, pagination: { total, limit, offset } }` with limit hard-max 200; `recordAudit` on every mutation; Access actor via `c.get("actorEmail")`.
+- **Auth modes (§8.4, fail-closed):** runtime default `locked`; production ships `access` (wrangler var); `local` trusts `X-Dev-Access-Email` and is unreachable in prod as long as the deployed var isn't `local`. `ACCESS_TEAM_DOMAIN`/`ACCESS_AUDIENCE` stay OUT of the repo (owner sets at deploy in #29); access-mode-without-team-domain fails closed.
+- **Heartbeat freshness is ONE law** (`worker/lib/heartbeat.ts`): limits live in one place; /healthz collapses never_run → fresh; GET /api/system shows all three states. /healthz still does NOT monitor `last_cleanup_at` (operator-visible via /api/system since #26) — known follow-up candidate.
+- **Known unpicked follow-up candidates (flagged in reviews, none scheduled):** /healthz `last_cleanup_at`; #17 stale-`sending` notification_events reconciler; no un-archive path for archived clients (API supports `PATCH {active:true}`); TargetForm email regex is local (a worker/lib/notification-schema.ts would complete the SSOT pattern); export omits `enabled` (restore re-enables paused monitors — documented).
+- **Windows note:** LF/CRLF warnings on checkout are noise; lint passes regardless.
 
-Sequence: **#28**, then **STOP — hand #29–#31 to the owner**.
+Sequence: **STOP — hand #29–#31 to the owner.**
