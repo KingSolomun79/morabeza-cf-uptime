@@ -78,8 +78,12 @@ export function ImportExportPage() {
   async function onFileChosen(file: File | undefined) {
     if (!file) return;
     setFileName(file.name);
-    setRawJson(await file.text());
-    setError(null);
+    try {
+      setRawJson(await file.text());
+      setError(null);
+    } catch (cause) {
+      setError({ kind: "error", text: `Could not read ${file.name}: ${cause instanceof Error ? cause.message : "unreadable file"}` });
+    }
   }
 
   async function runExport() {
@@ -254,7 +258,7 @@ export function ImportExportPage() {
                         ) : (
                           <ul className="list-inside list-disc font-mono text-xs text-red-600 dark:text-red-400">
                             {(row.errors ?? []).map((detail) => (
-                              <li key={`${detail.path}:${detail.message}`}>
+                              <li key={`${row.index}-${detail.path}-${detail.message}`}>
                                 {detail.path}: {detail.message}
                               </li>
                             ))}

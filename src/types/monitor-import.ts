@@ -30,6 +30,7 @@ export interface ExportMonitorRow {
   url: string;
   method: string;
   headers: Record<string, string> | null;
+  requestBody: string | null;
   intervalSeconds: number;
   expectedStatusCodes: number[];
   bodyContains: string | null;

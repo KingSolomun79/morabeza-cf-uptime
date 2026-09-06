@@ -158,9 +158,13 @@ describe("ImportExportPage (PRD §25, §27.2)", () => {
       }),
       revokeObjectURL: vi.fn(),
     });
+    const originalClick = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
       anchorClicks.push(this.download);
     };
+    afterEach(() => {
+      HTMLAnchorElement.prototype.click = originalClick;
+    });
 
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: /Download JSON/ }));

@@ -66,12 +66,13 @@ describe("POST /api/monitors/import (#27)", () => {
       { client: "Morabeza", name: "", url: "https://invalid.example.com/" }, // empty name → fails
       { client: "Ghost Client", name: "Unknown Client Row", url: "https://unknown.example.com/" }, // unresolvable client
       { client: "morabeza", name: "API", url: "https://api.contabilistas.cv/health", method: "GET" }, // slug-ish name, case-insensitive
+      { client: "Morabeza", name: "Idempotent Health", url: "https://post.contabilistas.cv/health", method: "POST", requestBody: "probe=1", expectedStatusCodes: [204] },
     ]);
 
     expect(status).toBe(201);
-    expect(body.data!.summary).toEqual({ total: 4, created: 2, duplicates: 0, failed: 2 });
+    expect(body.data!.summary).toEqual({ total: 5, created: 3, duplicates: 0, failed: 2 });
 
-    const [okRow, badName, unknownClient, okRow2] = body.data!.results;
+    const [okRow, badName, unknownClient, okRow2, postRow] = body.data!.results;
     expect(okRow.status).toBe("created");
     expect(okRow.monitorId).toBeTruthy();
     expect(badName.status).toBe("failed");
@@ -79,6 +80,7 @@ describe("POST /api/monitors/import (#27)", () => {
     expect(unknownClient.status).toBe("failed");
     expect(unknownClient.errors?.[0]?.message).toMatch(/unknown client "Ghost Client"/);
     expect(okRow2.status).toBe("created");
+    expect(postRow.status).toBe("created");
 
     // Created rows exist and are scheduler-pickup-ready (next_check_at set).
     const db = getDb(env);
@@ -89,7 +91,7 @@ describe("POST /api/monitors/import (#27)", () => {
     // One audit event for the import action.
     const audits = await db.select().from(auditEvents).where(eqColumn(auditEvents.action, "monitor.import"));
     expect(audits).toHaveLength(1);
-    expect(audits[0]?.summary).toContain("created 2");
+    expect(audits[0]?.summary).toContain("created 3");
   });
 
   it("flags probable duplicates as SKIPPED, not duplicated (round-trip idempotency)", async () => {
@@ -144,7 +146,7 @@ describe("POST /api/monitors/import (#27)", () => {
     }));
     const { status, body } = await importRows(tooMany);
     expect(status).toBe(400);
-    expect(body.error?.details?.[0]?.message).toMatch(/at most 500 rows/);
+    expect(body.error?.details?.[0]?.message).toMatch(new RegExp(`at most ${MAX_IMPORT_ROWS} rows`));
   });
 
   it("rejects unauthenticated imports like every /api route", async () => {
@@ -184,6 +186,9 @@ describe("GET /api/monitors/export + round-trip (#27)", () => {
     expect(homepage.intervalSeconds).toBe(300);
     expect(homepage.expectedStatusCodes).toEqual([200]);
     expect(homepage.headers).toBeNull(); // fixture had no headers
+    const postMonitor = body.data.find((row) => row.name === "Idempotent Health")!;
+    expect(postMonitor.method).toBe("POST");
+    expect((postMonitor as unknown as { requestBody: string | null }).requestBody).toBe("probe=1");
   });
 
   it("round-trips: importing the export again flags everything as duplicates and creates nothing", async () => {

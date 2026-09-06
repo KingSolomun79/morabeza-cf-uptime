@@ -11,12 +11,14 @@
  * import(export(x)) is idempotent. Invalid rows never block valid ones;
  * every row reports its outcome with its file index.
  *
- * Size bound: MAX_IMPORT_ROWS caps one file; each row is bounded by the
- * shared §22 schema (the SAME Zod validator the single-create route uses —
- * one validator, two entry points). No mass immediate checks: rows get the
- * normal next_check_at and the scheduler picks them up (#12/#10).
+ * Size bound: MAX_IMPORT_ROWS caps one file (chosen against the D1
+ * per-request query budget — see the constant's doc); each row is bounded
+ * by the shared §22 schema (the SAME Zod validator the single-create route
+ * uses — one validator, two entry points, including the body/method
+ * conflict rule). No mass immediate checks: rows get the normal
+ * next_check_at and the scheduler picks them up (#12/#10).
  */
-import { createMonitorSchema, findSensitiveHeader } from "../lib/monitor-schema";
+import { createMonitorSchema, findConfigConflicts, findSensitiveHeader } from "../lib/monitor-schema";
 import { ApiError } from "../lib/errors";
 import { getDb } from "../lib/db";
 import { clients, monitors } from "../../db/schema";
@@ -24,7 +26,13 @@ import { isNull } from "drizzle-orm";
 import { createMonitor, findProbableDuplicate } from "../repositories/monitors";
 import type { Env } from "../env";
 
-export const MAX_IMPORT_ROWS = 500;
+/**
+ * File-size bound. Practical ceiling, not just a formality: each created row
+ * costs ~5 D1 queries (duplicate lookup, client check, 2 inserts, state
+ * load), so 100 rows stays within the D1 per-request query budget. Larger
+ * rollouts: split the file — duplicate-skip makes chunked retries safe.
+ */
+export const MAX_IMPORT_ROWS = 100;
 
 export type ImportRowStatus = "created" | "duplicate" | "failed";
 
@@ -57,10 +65,16 @@ export function sanitizeHeaders(headers: Record<string, string> | null): Record<
 export async function resolveClientRows(env: Env): Promise<Map<string, string>> {
   const db = getDb(env);
   const rows = await db.select({ id: clients.id, name: clients.name, slug: clients.slug }).from(clients);
+  // Deterministic under collisions: names resolve before slugs, and the
+  // first client to claim a key keeps it (rows are ordered by id).
   const map = new Map<string, string>();
   for (const row of rows) {
-    map.set(row.name.toLowerCase(), row.id);
-    map.set(row.slug.toLowerCase(), row.id);
+    const key = row.name.toLowerCase();
+    if (!map.has(key)) map.set(key, row.id);
+  }
+  for (const row of rows) {
+    const key = row.slug.toLowerCase();
+    if (!map.has(key)) map.set(key, row.id);
   }
   return map;
 }
@@ -75,6 +89,7 @@ async function loadExportRows(env: Env): Promise<Array<Record<string, unknown>>>
       url: monitors.url,
       method: monitors.method,
       headersJson: monitors.headersJson,
+      requestBody: monitors.requestBody,
       bodyContains: monitors.bodyContains,
       bodyNotContains: monitors.bodyNotContains,
       maxResponseTimeMs: monitors.maxResponseTimeMs,
@@ -109,6 +124,7 @@ async function loadExportRows(env: Env): Promise<Array<Record<string, unknown>>>
     url: row.url,
     method: row.method,
     headers: sanitizeHeaders(parseJson<Record<string, string> | null>(row.headersJson, null)),
+    requestBody: row.requestBody,
     intervalSeconds: row.intervalSeconds,
     expectedStatusCodes: parseJson<number[]>(row.expectedStatusCodesJson, [200]),
     bodyContains: row.bodyContains,
@@ -184,6 +200,13 @@ export async function importMonitors(env: Env, body: unknown): Promise<ImportRes
         message: `security-sensitive header "${sensitive}" is rejected in V1 (PRD §10.9)`,
       });
     }
+    const conflict = findConfigConflicts({
+      method: typeof raw.method === "string" ? raw.method : "GET",
+      requestBody: typeof raw.requestBody === "string" ? raw.requestBody : null,
+    });
+    if (conflict) {
+      errors.push({ path: "requestBody", message: conflict });
+    }
 
     let parsed: Record<string, unknown> | undefined;
     if (clientId) {
@@ -228,9 +251,22 @@ export async function importMonitors(env: Env, body: unknown): Promise<ImportRes
       });
       continue;
     }
-    const createdMonitor = await createMonitor(env, row as Parameters<typeof createMonitor>[1]);
-    created += 1;
-    results.push({ index: entry.index, status: "created", name: entry.name, monitorId: createdMonitor.id });
+    try {
+      const createdMonitor = await createMonitor(env, row as Parameters<typeof createMonitor>[1]);
+      created += 1;
+      results.push({ index: entry.index, status: "created", name: entry.name, monitorId: createdMonitor.id });
+    } catch (cause) {
+      // A mid-flight failure (D1 hiccup, client deleted between resolution
+      // and creation) is a ROW outcome, not a lost report: earlier commits
+      // stand, the failure is reported with its index, and the loop goes on.
+      failed += 1;
+      results.push({
+        index: entry.index,
+        status: "failed",
+        name: entry.name,
+        errors: [{ path: "row", message: cause instanceof Error ? cause.message : "row creation failed" }],
+      });
+    }
   }
 
   return {
