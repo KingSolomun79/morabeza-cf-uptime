@@ -15,6 +15,7 @@ import { clientsRoutes } from "./routes/clients";
 import { monitorsRoutes } from "./routes/monitors";
 import { maintenanceRoutes } from "./routes/maintenance";
 import { incidentsRoutes } from "./routes/incidents";
+import { dashboardRoutes } from "./routes/dashboard";
 import { monitorNotificationTargetsRoutes, notificationTargetsRoutes } from "./routes/notifications";
 import type { AppEnv } from "./env";
 
@@ -76,6 +77,7 @@ export function createApp(): Hono<AppEnv> {
   api.route("/notification-targets", notificationTargetsRoutes);
   api.route("/maintenance", maintenanceRoutes);
   api.route("/incidents", incidentsRoutes);
+  api.route("/dashboard", dashboardRoutes);
   api.route("/monitors", monitorNotificationTargetsRoutes);
   api.route("/monitors", monitorsRoutes);
 

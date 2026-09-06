@@ -1,10 +1,14 @@
 /**
- * Route table (issue #21; PRD §27.2): the shell layout wraps the eight
- * nav sections; unknown paths fall back to Overview. Exported separately
- * from App so tests can drive specific paths via MemoryRouter.
+ * Route table (issues #21–#22; PRD §27.2): the shell layout wraps the nav
+ * sections; Overview is the real #22 dashboard, the rest are placeholders
+ * until their page slices land. /monitors/:id exists so #22's table rows
+ * (and #17 email deep links) resolve — content lands in #24. Exported
+ * separately from App so tests can drive specific paths via MemoryRouter.
  */
 import { Navigate, Route, Routes } from "react-router";
 import { AppShell } from "./components/app-shell";
+import { OverviewPage } from "./pages/overview";
+import { PlaceholderPage } from "./pages/placeholder-page";
 import {
   ClientsPage,
   IncidentsPage,
@@ -12,7 +16,6 @@ import {
   MaintenancePage,
   MonitorsPage,
   NotificationsPage,
-  OverviewPage,
   SystemPage,
 } from "./pages";
 
@@ -22,6 +25,7 @@ export function AppRoutes() {
       <Route element={<AppShell />}>
         <Route index element={<OverviewPage />} />
         <Route path="monitors" element={<MonitorsPage />} />
+        <Route path="monitors/:id" element={<PlaceholderPage title="Monitor detail" description="Response-time chart, check history, incidents, and uptime windows arrive with issue #24." />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="incidents" element={<IncidentsPage />} />
         <Route path="maintenance" element={<MaintenancePage />} />

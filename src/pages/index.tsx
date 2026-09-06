@@ -1,12 +1,9 @@
 /**
- * The eight §27.2 nav sections as placeholder routes (issue #21). Real
- * content lands in #22–#27; the titles below are the canonical labels.
+ * The remaining §27.2 nav sections as placeholder routes (issues #21–#22;
+ * Overview is now the real #22 dashboard). Real content lands in #23–#27;
+ * the titles below are the canonical labels.
  */
 import { PlaceholderPage } from "./placeholder-page";
-
-export function OverviewPage() {
-  return <PlaceholderPage title="Overview" description="Fleet status, counts, and response-time trend at a glance." />;
-}
 
 export function MonitorsPage() {
   return <PlaceholderPage title="Monitors" description="Create, edit, pause, and archive monitored endpoints." />;
