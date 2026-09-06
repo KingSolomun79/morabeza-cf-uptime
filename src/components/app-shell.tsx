@@ -63,7 +63,14 @@ export function AppShell() {
       {/* Mobile top bar (narrow widths) */}
       <header className="sticky top-0 z-10 flex items-center justify-between border-b bg-card px-4 py-3 lg:hidden">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" aria-expanded={mobileNavOpen} aria-label="Toggle navigation" onClick={() => setMobileNavOpen((open) => !open)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-expanded={mobileNavOpen}
+            aria-controls="mobile-nav"
+            aria-label="Toggle navigation"
+            onClick={() => setMobileNavOpen((open) => !open)}
+          >
             {mobileNavOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
           </Button>
           <span className="font-semibold">Morabeza Uptime</span>
@@ -71,7 +78,7 @@ export function AppShell() {
         <ThemeToggle />
       </header>
       {mobileNavOpen && (
-        <div className="border-b bg-card px-4 py-3 lg:hidden">
+        <div id="mobile-nav" className="border-b bg-card px-4 py-3 lg:hidden">
           <NavLinks onNavigate={() => setMobileNavOpen(false)} />
         </div>
       )}

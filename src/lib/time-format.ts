@@ -15,7 +15,7 @@ function partsInZone(date: Date, timeZone: string): Record<string, string> {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   });
   const parts: Record<string, string> = {};
   for (const part of formatter.formatToParts(date)) {

@@ -17,8 +17,10 @@ import {
   API_ERROR_CATEGORIES,
   NETWORK_CATEGORY,
   apiRequest,
+  apiRequestEnvelope,
   UptimeApiError,
 } from "../../src/lib/api";
+import { applyStoredTheme } from "../../src/components/theme-toggle";
 
 afterEach(() => {
   cleanup();
@@ -71,6 +73,27 @@ describe("apiRequest typed error mapping (PRD §38)", () => {
     expect(data).toEqual({ id: "mon_1", name: "Homepage" });
   });
 
+  it("apiRequestEnvelope preserves envelope siblings (pagination, warning)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            data: [{ id: "inc_1" }],
+            pagination: { total: 42, limit: 25, offset: 0 },
+            warning: "probable duplicate",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    const envelope = await apiRequestEnvelope<{ id: string }[]>("/api/incidents");
+    expect(envelope.data).toEqual([{ id: "inc_1" }]);
+    expect(envelope.pagination).toEqual({ total: 42, limit: 25, offset: 0 });
+    expect(envelope.warning).toBe("probable duplicate");
+  });
+
   it.each(API_ERROR_CATEGORIES.map((category) => [category] as const))(
     "maps the §38 %s category to a typed error with the correlation id",
     async (category) => {
@@ -118,6 +141,17 @@ describe("apiRequest typed error mapping (PRD §38)", () => {
     const nonJson = (await apiRequest("/x").catch((e: unknown) => e)) as UptimeApiError;
     expect(nonJson.category).toBe("internal");
     expect(nonJson.status).toBe(502);
+  });
+
+  it("derives the category from the status for non-JSON bodies (401 → authentication_required)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("<html>Access challenge</html>", { status: 401 })),
+    );
+
+    const error = (await apiRequest("/api/monitors").catch((e: unknown) => e)) as UptimeApiError;
+    expect(error.category).toBe("authentication_required");
+    expect(error.status).toBe(401);
   });
 
   it("maps fetch failures (offline/DNS) to the client-only network category", async () => {
@@ -174,11 +208,43 @@ describe("route smoke test (PRD §27.2)", () => {
     expect(nav).toBeInTheDocument();
   });
 
-  it("renders the full sidebar navigation with eight links", () => {
+  it("renders the full sidebar navigation with all eight links in §27.2 order", () => {
     renderRoute("/");
-    for (const [, title] of SECTIONS) {
-      expect(screen.getAllByRole("link", { name: title }).length).toBeGreaterThan(0);
-    }
+    const links = screen
+      .getByRole("navigation", { name: "Primary" })
+      .querySelectorAll("a");
+    const labels = Array.from(links).map((link) => link.textContent?.trim());
+    expect(labels).toEqual([
+      "Overview",
+      "Monitors",
+      "Clients",
+      "Incidents",
+      "Maintenance",
+      "Notifications",
+      "Import / Export",
+      "System",
+    ]);
+  });
+
+  it("falls back to Overview for unknown client-side paths", () => {
+    renderRoute("/definitely/not/a/route");
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Theme (applyStoredTheme runs pre-paint from the bundle in main.tsx)
+
+describe("applyStoredTheme", () => {
+  it("applies the persisted theme class to <html>", () => {
+    document.documentElement.classList.remove("dark");
+    localStorage.setItem("morabeza-theme", "dark");
+    applyStoredTheme();
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+
+    localStorage.setItem("morabeza-theme", "light");
+    applyStoredTheme();
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
   });
 });
 
