@@ -67,7 +67,10 @@ export async function verifyAccessJwt(
   token: string,
   options: VerifyAccessJwtOptions,
 ): Promise<AccessClaims> {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  // .bind(globalThis): a bare `fetch` value passed through options loses its
+  // `this` in workerd and throws `TypeError: Illegal invocation` (same trap
+  // as monitor-check.ts; see that comment). Bound here for consistency.
+  const fetchImpl = (options.fetchImpl ?? fetch).bind(globalThis);
   const nowMs = options.nowMs ?? Date.now();
 
   const parts = token.split(".");
