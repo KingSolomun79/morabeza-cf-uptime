@@ -53,6 +53,14 @@
     "logs": {
       "enabled": true
     }
+  },
+  // Static assets (issue #21; same-unit deploy via the Vite/Cloudflare
+  // pipeline). Client-side routes (e.g. email deep links /monitors/:id) fall
+  // back to index.html; the API and /healthz ALWAYS hit the Worker so the
+  // JSON envelope contracts (PRD §24, §38) are preserved.
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/healthz"]
   }
 }
 // Scaffold placeholder (issue #1). Production bindings and settings — D1 (DB),

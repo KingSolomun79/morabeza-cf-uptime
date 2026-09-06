@@ -15,7 +15,11 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["@cloudflare/workers-types", "vite/client"]
+    "types": ["@cloudflare/workers-types", "vite/client"],
+    "jsx": "react-jsx"
   },
-  "include": ["worker", "tests"]
+  "include": ["worker", "tests"],
+  // UI component tests (.tsx) import DOM-lib frontend code from src/ — they
+  // belong to the app project; excluding them here keeps the Worker DOM-free.
+  "exclude": ["**/*.test.tsx"]
 }

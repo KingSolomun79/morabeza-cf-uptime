@@ -22,5 +22,6 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  // + UI component tests, which render frontend components (jsdom).
+  "include": ["src", "tests/**/*.test.tsx"]
 }
